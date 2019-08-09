@@ -31,10 +31,14 @@ pub fn draw_raster(
     };
 
 
-    let mut filter = skia::FilterQuality::Low;
-    if rendering_mode == usvg::ImageRendering::OptimizeSpeed {
-        filter = skia::FilterQuality::None;
-    }
+    let filter = if rendering_mode == usvg::ImageRendering::OptimizeSpeed {
+        skia::FilterQuality::None
+    } else {
+        skia::FilterQuality::Low
+    };
+
+    let mut paint = skia::Paint::default();
+    paint.set_filter_quality(filter);
 
     let canvas = surface.canvas();
     canvas.save();
@@ -47,7 +51,7 @@ pub fn draw_raster(
 
     let r = backend_utils::image::image_rect(&view_box, img.size);
     let rect = skia::Rect::new(r.x() as f32, r.y() as f32, r.width() as f32, r.height() as f32);
-    canvas.draw_image_rect(&image.image_snapshot(), None, rect, &skia::Paint::default());
+    canvas.draw_image_rect(&image.image_snapshot(), None, rect, &paint);
 
     // Revert.
     canvas.restore();
