@@ -278,6 +278,9 @@ fn default_backend() -> String {
     #[cfg(feature = "skia-backend")]
     { return "skia".to_string() }
 
+    #[cfg(feature = "skia-safe-backend")]
+    { return "skia".to_string() }
+
     #[cfg(feature = "raqote-backend")]
     { return "raqote".to_string() }
 

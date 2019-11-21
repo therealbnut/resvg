@@ -24,6 +24,8 @@ cargo build --release --features="cairo-backend"
 cargo build --release --features="raqote-backend"
 # or with a skia backend
 cargo build --release --features="skia-backend"
+# or with a skia-safe backend (latest skia)
+cargo build --release --features="skia-safe-backend"
 # or with all
 cargo build --release --all-features
 ```

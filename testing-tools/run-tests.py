@@ -124,6 +124,15 @@ if 'RESVG_SKIA_BACKEND' in os.environ:
         with cd('testing-tools/regression'):
             regression_testing('skia')
 
+if 'RESVG_SKIA_SAFE_BACKEND' in os.environ:
+    # build skia backend
+    with cd('tools/rendersvg'):
+        run(['cargo', 'build', '--release', '--features', 'skia-safe-backend'], check=True)
+
+    # regression testing of the cairo backend
+    if not args.no_regression:
+        with cd('testing-tools/regression'):
+            regression_testing('skia')
 
 if 'RESVG_QT_BACKEND' in os.environ:
     # test Qt C-API
@@ -183,6 +192,9 @@ if 'RESVG_SKIA_BACKEND' in os.environ:
     # run tests and build examples
     run(['cargo', 'test', '--release', '--features', 'skia-backend'], check=True)
 
+if 'RESVG_SKIA_SAFE_BACKEND' in os.environ:
+    # run tests and build examples
+    run(['cargo', 'test', '--release', '--features', 'skia-safe-backend'], check=True)
 
 if 'USVG_TESTING' in os.environ:
     with cd('usvg'):

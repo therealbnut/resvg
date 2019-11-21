@@ -33,6 +33,7 @@ fn process() -> Result<(), String> {
     #[cfg(all(not(feature = "cairo-backend"),
               not(feature = "qt-backend"),
               not(feature = "skia-backend"),
+              not(feature = "skia-safe-backend"),
               not(feature = "raqote-backend")))]
     {
         bail!("rendersvg has been built without any backends")

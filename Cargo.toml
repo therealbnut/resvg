@@ -15,6 +15,7 @@ categories = ["multimedia::images"]
 members = [
     "bindings/resvg-qt",
     "bindings/resvg-skia",
+    "bindings/resvg-skia-safe",
     "capi",
     "tools/rendersvg",
     "tools/usvg",
@@ -42,6 +43,7 @@ raqote = { version = "0.7.3", default-features = false, optional = true }
 
 # skia backend
 resvg-skia = { path = "bindings/resvg-skia", version = "0.8", optional = true }
+resvg-skia-safe = { path = "bindings/resvg-skia-safe", version = "0.8", optional = true }
 
 [features]
 default = ["text"]
@@ -49,6 +51,7 @@ cairo-backend = ["cairo-rs", "png/png-encoding"]
 qt-backend = ["resvg-qt"]
 raqote-backend = ["raqote"]
 skia-backend = ["resvg-skia"]
+skia-safe-backend = ["resvg-skia-safe"]
 text = ["usvg/text"]
 
 [package.metadata.docs.rs]

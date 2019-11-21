@@ -15,4 +15,5 @@ env:
     - RESVG_CAIRO_BACKEND=true
     - RESVG_RAQOTE_BACKEND=true
     - RESVG_SKIA_BACKEND=true
+    - RESVG_SKIA_SAFE_BACKEND=true
     - USVG_TESTING=true

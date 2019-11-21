@@ -99,6 +99,9 @@ pub use cairo;
 #[cfg(feature = "qt-backend")]
 pub use resvg_qt as qt;
 
+#[cfg(feature = "skia-safe-backend")]
+pub use resvg_skia_safe as skia;
+
 #[cfg(feature = "skia-backend")]
 pub use resvg_skia as skia;
 
@@ -114,7 +117,7 @@ pub mod backend_cairo;
 #[cfg(feature = "qt-backend")]
 pub mod backend_qt;
 
-#[cfg(feature = "skia-backend")]
+#[cfg(any(feature = "skia-backend", feature = "skia-safe-backend"))]
 pub mod backend_skia;
 
 #[cfg(feature = "raqote-backend")]
