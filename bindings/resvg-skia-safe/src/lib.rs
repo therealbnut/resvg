@@ -270,6 +270,14 @@ impl Default for Matrix {
 pub struct Canvas(*mut skia_safe::Canvas);
 
 impl Canvas {
+    pub unsafe fn from_ptr(ptr: *mut skiac_canvas) -> Option<Canvas> {
+        if !ptr.is_null() {
+            let canvas: *mut skia_safe::Canvas = std::mem::transmute(ptr);
+            Some(Canvas(&mut *canvas))
+        }
+        else { None }
+    }
+
     fn canvas(&self) -> &mut skia_safe::Canvas {
         unsafe { std::mem::transmute(self.0) }
     }
