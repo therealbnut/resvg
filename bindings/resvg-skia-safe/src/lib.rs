@@ -320,7 +320,7 @@ impl Canvas {
     }
 
     pub fn draw_rect(&mut self, x: f64, y: f64, w: f64, h: f64, paint: &Paint) {
-        self.canvas().draw_rect(skia_safe::Rect::new(x as f32, y as f32, w as f32, h as f32), &paint.0);
+        self.canvas().draw_rect(skia_safe::Rect::from_xywh(x as f32, y as f32, w as f32, h as f32), &paint.0);
     }
 
     pub fn draw_surface(&mut self, surface: &Surface, left: f64, top: f64, alpha: u8,
@@ -340,7 +340,7 @@ impl Canvas {
 
         let mut paint = Paint::new();
         paint.0.set_filter_quality(filter_quality.into());
-        let dst = skia_safe::Rect::new(x as f32, y as f32, w as f32, h as f32);
+        let dst = skia_safe::Rect::from_xywh(x as f32, y as f32, w as f32, h as f32);
         self.canvas().draw_image_rect(&image, None, &dst, &paint.0);
     }
 
@@ -349,7 +349,7 @@ impl Canvas {
     }
 
     pub fn set_clip_rect(&mut self, x: f64, y: f64, w: f64, h: f64) {
-        let rect = skia_safe::Rect::new(x as f32, y as f32, w as f32, h as f32);
+        let rect = skia_safe::Rect::from_xywh(x as f32, y as f32, w as f32, h as f32);
         self.canvas().clip_rect(rect, None, true);
     }
 
