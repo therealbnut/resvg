@@ -255,8 +255,8 @@ impl Matrix {
         let mut d = [0f32; 9];
         self.0.get_9(&mut d);
         (
-            d[0] as f64, d[1] as f64, d[2] as f64,
-            d[3] as f64, d[4] as f64, d[5] as f64,
+            d[0] as f64, d[3] as f64, d[1] as f64,
+            d[4] as f64, d[2] as f64, d[5] as f64,
         )
     }
 }
