@@ -153,7 +153,7 @@ pub enum Paint {
     /// Paint with a color.
     Color(Color),
 
-    /// Paint using a referenced element.
+    /// Paint using a paint server.
     Link(String),
 }
 
@@ -161,7 +161,7 @@ impl fmt::Debug for Paint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Paint::Color(c) => write!(f, "Color({})", c),
-            Paint::Link(_)  => write!(f, "Link"),
+            Paint::Link(ref id)  => write!(f, "Link({})", id),
         }
     }
 }
@@ -174,6 +174,18 @@ pub struct Fill {
     pub paint: Paint,
     pub opacity: Opacity,
     pub rule: FillRule,
+}
+
+impl Fill {
+    /// Creates a `Fill` from `Paint`.
+    ///
+    /// `opacity` and `rule` will be set to default values.
+    pub fn from_paint(paint: Paint) -> Self {
+        Fill {
+            paint,
+            ..Fill::default()
+        }
+    }
 }
 
 impl Default for Fill {
@@ -260,6 +272,17 @@ impl_enum_from_str!(ColorInterpolation,
 );
 
 
+/// A color channel.
+#[allow(missing_docs)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ColorChannel {
+    R,
+    G,
+    B,
+    A,
+}
+
+
 /// A raster image container.
 #[derive(Clone, Debug)]
 pub enum ImageData {
@@ -311,34 +334,139 @@ pub enum FeCompositeOperator {
     Atop,
     Xor,
     Arithmetic {
-        k1: PositiveNumber,
-        k2: PositiveNumber,
-        k3: PositiveNumber,
-        k4: PositiveNumber,
+        k1: f64,
+        k2: f64,
+        k3: f64,
+        k4: f64,
     },
+}
+
+
+/// A morphology operation.
+#[allow(missing_docs)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum FeMorphologyOperator {
+    Erode,
+    Dilate,
 }
 
 
 /// Kind of the `feImage` data.
 #[derive(Clone, Debug)]
 pub enum FeImageKind {
-    /// Empty image.
-    ///
-    /// Unlike the `image` element, `feImage` can be without the `href` attribute.
-    /// In this case the filter primitive is an empty canvas.
-    /// And we can't remove it, because its `result` can be used.
-    None,
-
     /// An image data.
     Image(ImageData, ImageFormat),
 
     /// A reference to an SVG object.
     ///
     /// `feImage` can reference any SVG object, just like `use` element.
-    /// But we can't resolve `use` in this case.
-    ///
-    /// Not supported yet.
     Use(String),
+}
+
+
+/// An edges processing mode.
+#[allow(missing_docs)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum FeEdgeMode {
+    None,
+    Duplicate,
+    Wrap,
+}
+
+
+/// A turbulence kind for the `feTurbulence` filter.
+#[allow(missing_docs)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum FeTurbulenceKind {
+    FractalNoise,
+    Turbulence,
+}
+
+
+/// A convolve matrix representation.
+///
+/// Used primarily by `FeConvolveMatrix`.
+#[derive(Clone, Debug)]
+pub struct ConvolveMatrix {
+    x: u32,
+    y: u32,
+    columns: u32,
+    rows: u32,
+    data: Vec<f64>,
+}
+
+impl ConvolveMatrix {
+    /// Creates a new `ConvolveMatrix`.
+    ///
+    /// Returns `None` when:
+    ///
+    /// - `columns` * `rows` != `data.len()`
+    /// - `target_x` >= `columns`
+    /// - `target_y` >= `rows`
+    pub fn new(target_x: u32, target_y: u32, columns: u32, rows: u32, data: Vec<f64>) -> Option<Self> {
+        if (columns * rows) as usize != data.len()
+           || target_x >= columns
+           || target_y >= rows
+        {
+            return None;
+        }
+
+        Some(ConvolveMatrix {
+            x: target_x,
+            y: target_y,
+            columns,
+            rows,
+            data,
+        })
+    }
+
+    /// Returns a matrix's X target.
+    ///
+    /// `targetX` in the SVG.
+    #[inline]
+    pub fn target_x(&self) -> u32 {
+        self.x
+    }
+
+    /// Returns a matrix's Y target.
+    ///
+    /// `targetY` in the SVG.
+    #[inline]
+    pub fn target_y(&self) -> u32 {
+        self.y
+    }
+
+    /// Returns a number of columns in the matrix.
+    ///
+    /// Part of the `order` attribute in the SVG.
+    #[inline]
+    pub fn columns(&self) -> u32 {
+        self.columns
+    }
+
+    /// Returns a number of rows in the matrix.
+    ///
+    /// Part of the `order` attribute in the SVG.
+    #[inline]
+    pub fn rows(&self) -> u32 {
+        self.rows
+    }
+
+    /// Returns a matrix value at the specified position.
+    ///
+    /// # Panics
+    ///
+    /// - When position is out of bounds.
+    #[inline]
+    pub fn get(&self, x: u32, y: u32) -> f64 {
+        self.data[(y * self.columns + x) as usize]
+    }
+
+    /// Returns a reference to an internal data.
+    #[inline]
+    pub fn data(&self) -> &[f64] {
+        &self.data
+    }
 }
 
 

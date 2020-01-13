@@ -8,20 +8,29 @@ This changelog also contains important changes in dependencies.
 
 ## [Unreleased]
 ### Added
+- `feConvolveMatrix`, `feMorphology`, `feDisplacementMap`, `feTurbulence`,
+  `feDiffuseLighting` and `feSpecularLighting` support.
+- `BackgroundImage`, `BackgroundAlpha`, `FillPaint` and `StrokePaint` support as a filter input.
 - Load grayscale raster images.
 - `enable-background` support.
-- `BackgroundImage` and `BackgroundAlpha` support as a filter input.
 - resvg/usvg can be built without text rendering support now.
+- `OutputImage::make_vec` and `OutputImage::make_rgba_vec`.
+- `feImage` with a reference to an internal element.
 
 ### Changed
-- Allow `feComposite` k1-4 coefficients to be larger than 1.0
+- `feComposite` k1-4 coefficients can have any number now.
   This matches browsers behaviour.
 - Use `flate2` instead of `libflate` for GZip decoding.
+- (usvg) `fill` and `stroke` attributes will always be set for `path` now.
+- (usvg) `g`, `path` and `image` can now be set inside `defs`. Required by `feImage`.
+- (c-api) Rename `resvg_*_render_to_image` into `resvg_*_render_to_file`.
 
 ### Fixed
-- `feComposite` with fully transparent regions was producing invalid results.
+- (usvg) Transform processing during text-to-path conversion.
+- `feComposite` with fully transparent region was producing an invalid result.
 - Fallback to `matrix` in `feColorMatrix` when `type` is not set or invalid.
 - ID preserving for `use` elements.
+- `feFlood` with subregion and `primitiveUnits=objectBoundingBox`.
 
 ## [0.8.0] - 2019-08-17
 ### Added

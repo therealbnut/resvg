@@ -319,6 +319,10 @@ fn parse_svg_attribute(
                 | EId::Tspan => {
                     AttributeValue::String(value.to_string())
                 }
+                  EId::FePointLight
+                | EId::FeSpotLight => {
+                    AttributeValue::Number(parse_number(value)?)
+                }
                 _ => {
                     AttributeValue::Length(svgtypes::Length::from_str(value)?)
                 }
@@ -357,10 +361,6 @@ fn parse_svg_attribute(
             AttributeValue::Length(svgtypes::Length::from_str(value)?)
         }
 
-        AId::StrokeMiterlimit => {
-            AttributeValue::Number(parse_number(value)?)
-        }
-
           AId::Opacity
         | AId::FillOpacity
         | AId::FloodOpacity
@@ -371,17 +371,33 @@ fn parse_svg_attribute(
             AttributeValue::Opacity(n.into())
         }
 
-          AId::K1
-        | AId::K2
-        | AId::K3
-        | AId::K4 => {
-            AttributeValue::Number(parse_number(value)?)
-        }
-
           AId::Amplitude
+        | AId::Azimuth
+        | AId::Bias
+        | AId::DiffuseConstant
+        | AId::Divisor
+        | AId::Elevation
         | AId::Exponent
         | AId::Intercept
-        | AId::Slope => {
+        | AId::K1
+        | AId::K2
+        | AId::K3
+        | AId::K4
+        | AId::LimitingConeAngle
+        | AId::NumOctaves
+        | AId::PointsAtX
+        | AId::PointsAtY
+        | AId::PointsAtZ
+        | AId::Scale
+        | AId::Seed
+        | AId::Slope
+        | AId::SpecularConstant
+        | AId::SpecularExponent
+        | AId::StrokeMiterlimit
+        | AId::SurfaceScale
+        | AId::TargetX
+        | AId::TargetY
+        | AId::Z => {
             AttributeValue::Number(parse_number(value)?)
         }
 
@@ -441,6 +457,7 @@ fn parse_svg_attribute(
         }
 
           AId::FloodColor
+        | AId::LightingColor
         | AId::StopColor => {
             match value {
                 "currentColor" => AttributeValue::CurrentColor,
@@ -507,7 +524,10 @@ fn parse_svg_attribute(
             AttributeValue::AspectRatio(svgtypes::AspectRatio::from_str(value)?)
         }
 
-          AId::Rotate
+          AId::BaseFrequency
+        | AId::KernelMatrix
+        | AId::Radius
+        | AId::Rotate
         | AId::TableValues
         | AId::Values => {
             AttributeValue::NumberList(svgtypes::NumberList::from_str(value)?)

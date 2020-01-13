@@ -1,5 +1,4 @@
 # usvg
-[![Build Status](https://travis-ci.org/RazrFalcon/resvg.svg?branch=master)](https://travis-ci.org/RazrFalcon/usvg)
 [![Crates.io](https://img.shields.io/crates/v/usvg.svg)](https://crates.io/crates/usvg)
 [![Documentation](https://docs.rs/usvg/badge.svg)](https://docs.rs/usvg)
 
@@ -53,9 +52,7 @@ Full spec can be found [here](../docs/usvg_spec.adoc).
 - CSS support is minimal.
 - Only [static](http://www.w3.org/TR/SVG11/feature#SVG-static) SVG features,
   e.g. no: `a`, `view`, `cursor`, `script` and [animations](https://www.w3.org/TR/SVG/animate.html).
-- Unsupported elements:
-  - some filter-based elements
-  - font-based elements
+- Font-based elements are not supported.
 
 ## Dependency
 

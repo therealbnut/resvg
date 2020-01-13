@@ -209,6 +209,16 @@ pub struct Group {
     /// Element filter.
     pub filter: Option<String>,
 
+    /// Contains a fill color or paint server used by `FilterInput::FillPaint`.
+    ///
+    /// Will be set only when filter actually has a `FilterInput::FillPaint`.
+    pub filter_fill: Option<Paint>,
+
+    /// Contains a fill color or paint server used by `FilterInput::StrokePaint`.
+    ///
+    /// Will be set only when filter actually has a `FilterInput::StrokePaint`.
+    pub filter_stroke: Option<Paint>,
+
     /// Indicates that this node can be accessed via `filter`.
     ///
     /// `None` indicates an `accumulate` value.
@@ -224,6 +234,8 @@ impl Default for Group {
             clip_path: None,
             mask: None,
             filter: None,
+            filter_fill: None,
+            filter_stroke: None,
             enable_background: None,
         }
     }
@@ -514,12 +526,42 @@ pub enum FilterKind {
     FeColorMatrix(FeColorMatrix),
     FeComponentTransfer(FeComponentTransfer),
     FeComposite(FeComposite),
+    FeConvolveMatrix(FeConvolveMatrix),
+    FeDiffuseLighting(FeDiffuseLighting),
+    FeDisplacementMap(FeDisplacementMap),
     FeFlood(FeFlood),
     FeGaussianBlur(FeGaussianBlur),
     FeImage(FeImage),
     FeMerge(FeMerge),
+    FeMorphology(FeMorphology),
     FeOffset(FeOffset),
+    FeSpecularLighting(FeSpecularLighting),
     FeTile(FeTile),
+    FeTurbulence(FeTurbulence),
+}
+
+impl FilterKind {
+    /// Checks that `FilterKind` has a specific input.
+    pub fn has_input(&self, input: &FilterInput) -> bool {
+        match self {
+            FilterKind::FeBlend(ref fe) => fe.input1 == *input || fe.input2 == *input,
+            FilterKind::FeColorMatrix(ref fe) => fe.input == *input,
+            FilterKind::FeComponentTransfer(ref fe) => fe.input == *input,
+            FilterKind::FeComposite(ref fe) => fe.input1 == *input || fe.input2 == *input,
+            FilterKind::FeConvolveMatrix(ref fe) => fe.input == *input,
+            FilterKind::FeDiffuseLighting(ref fe) => fe.input == *input,
+            FilterKind::FeDisplacementMap(ref fe) => fe.input1 == *input || fe.input2 == *input,
+            FilterKind::FeFlood(_) => false,
+            FilterKind::FeGaussianBlur(ref fe) => fe.input == *input,
+            FilterKind::FeImage(_) => false,
+            FilterKind::FeMerge(ref fe) => fe.inputs.iter().any(|i| i == input),
+            FilterKind::FeMorphology(ref fe) => fe.input == *input,
+            FilterKind::FeOffset(ref fe) => fe.input == *input,
+            FilterKind::FeSpecularLighting(ref fe) => fe.input == *input,
+            FilterKind::FeTile(ref fe) => fe.input == *input,
+            FilterKind::FeTurbulence(_) => false,
+        }
+    }
 }
 
 
@@ -663,6 +705,103 @@ pub struct FeComposite {
 }
 
 
+/// A matrix convolution filter primitive.
+///
+/// `feConvolveMatrix` element in the SVG.
+#[derive(Clone, Debug)]
+pub struct FeConvolveMatrix {
+    /// Identifies input for the given filter primitive.
+    ///
+    /// `in` in the SVG.
+    pub input: FilterInput,
+
+    /// A convolve matrix.
+    pub matrix: ConvolveMatrix,
+
+    /// A matrix divisor.
+    ///
+    /// `divisor` in the SVG.
+    pub divisor: NonZeroF64,
+
+    /// A kernel matrix bias.
+    ///
+    /// `bias` in the SVG.
+    pub bias: f64,
+
+    /// An edges processing mode.
+    ///
+    /// `edgeMode` in the SVG.
+    pub edge_mode: FeEdgeMode,
+
+    /// An alpha preserving flag.
+    ///
+    /// `preserveAlpha` in the SVG.
+    pub preserve_alpha: bool,
+}
+
+
+/// A diffuse lighting filter primitive.
+///
+/// `feDiffuseLighting` element in the SVG.
+#[derive(Clone, Debug)]
+pub struct FeDiffuseLighting {
+    /// Identifies input for the given filter primitive.
+    ///
+    /// `in` in the SVG.
+    pub input: FilterInput,
+
+    /// A surface scale.
+    ///
+    /// `surfaceScale` in the SVG.
+    pub surface_scale: f64,
+
+    /// A diffuse constant.
+    ///
+    /// `diffuseConstant` in the SVG.
+    pub diffuse_constant: f64,
+
+    /// A lighting color.
+    ///
+    /// `lighting-color` in the SVG.
+    pub lighting_color: Color,
+
+    /// A light source.
+    pub light_source: FeLightSource,
+}
+
+
+/// A displacement map filter primitive.
+///
+/// `feDisplacementMap` element in the SVG.
+#[derive(Clone, Debug)]
+pub struct FeDisplacementMap {
+    /// Identifies input for the given filter primitive.
+    ///
+    /// `in` in the SVG.
+    pub input1: FilterInput,
+
+    /// Identifies input for the given filter primitive.
+    ///
+    /// `in2` in the SVG.
+    pub input2: FilterInput,
+
+    /// Scale factor.
+    ///
+    /// `scale` in the SVG.
+    pub scale: f64,
+
+    /// Indicates a source color channel along the X-axis.
+    ///
+    /// `xChannelSelector` in the SVG.
+    pub x_channel_selector: ColorChannel,
+
+    /// Indicates a source color channel along the Y-axis.
+    ///
+    /// `yChannelSelector` in the SVG.
+    pub y_channel_selector: ColorChannel,
+}
+
+
 /// A flood filter primitive.
 ///
 /// `feFlood` element in the SVG.
@@ -732,6 +871,37 @@ pub struct FeMerge {
 }
 
 
+/// A morphology filter primitive.
+///
+/// `feMorphology` element in the SVG.
+#[derive(Clone, Debug)]
+pub struct FeMorphology {
+    /// Identifies input for the given filter primitive.
+    ///
+    /// `in` in the SVG.
+    pub input: FilterInput,
+
+    /// A filter operator.
+    ///
+    /// `operator` in the SVG.
+    pub operator: FeMorphologyOperator,
+
+    /// A filter radius along the X-axis.
+    ///
+    /// A value of zero disables the effect of the given filter primitive.
+    ///
+    /// `radius` in the SVG.
+    pub radius_x: PositiveNumber,
+
+    /// A filter radius along the Y-axis.
+    ///
+    /// A value of zero disables the effect of the given filter primitive.
+    ///
+    /// `radius` in the SVG.
+    pub radius_y: PositiveNumber,
+}
+
+
 /// An offset filter primitive.
 ///
 /// `feOffset` element in the SVG.
@@ -750,6 +920,43 @@ pub struct FeOffset {
 }
 
 
+/// A specular lighting filter primitive.
+///
+/// `feSpecularLighting` element in the SVG.
+#[derive(Clone, Debug)]
+pub struct FeSpecularLighting {
+    /// Identifies input for the given filter primitive.
+    ///
+    /// `in` in the SVG.
+    pub input: FilterInput,
+
+    /// A surface scale.
+    ///
+    /// `surfaceScale` in the SVG.
+    pub surface_scale: f64,
+
+    /// A specular constant.
+    ///
+    /// `specularConstant` in the SVG.
+    pub specular_constant: f64,
+
+    /// A specular exponent.
+    ///
+    /// Should be in 1..128 range.
+    ///
+    /// `specularExponent` in the SVG.
+    pub specular_exponent: f64,
+
+    /// A lighting color.
+    ///
+    /// `lighting-color` in the SVG.
+    pub lighting_color: Color,
+
+    /// A light source.
+    pub light_source: FeLightSource,
+}
+
+
 /// A tile filter primitive.
 ///
 /// `feTile` element in the SVG.
@@ -762,12 +969,130 @@ pub struct FeTile {
 }
 
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// A turbulence generation filter primitive.
+///
+/// `feTurbulence` element in the SVG.
+#[derive(Clone, Copy, Debug)]
+pub struct FeTurbulence {
+    /// Identifies the base frequency for the noise function.
+    ///
+    /// `baseFrequency` in the SVG.
+    pub base_frequency: Point<PositiveNumber>,
 
-    #[test]
-    fn node_kind_size() {
-        assert!(std::mem::size_of::<NodeKind>() <= 256);
-    }
+    /// Identifies the number of octaves for the noise function.
+    ///
+    /// `numOctaves` in the SVG.
+    pub num_octaves: u32,
+
+    /// The starting number for the pseudo random number generator.
+    ///
+    /// `seed` in the SVG.
+    pub seed: i32,
+
+    /// Smooth transitions at the border of tiles.
+    ///
+    /// `stitchTiles` in the SVG.
+    pub stitch_tiles: bool,
+
+    /// Indicates whether the filter primitive should perform a noise or turbulence function.
+    ///
+    /// `type` in the SVG.
+    pub kind: FeTurbulenceKind,
+}
+
+
+/// A light source kind.
+#[allow(missing_docs)]
+#[derive(Clone, Copy, Debug)]
+pub enum FeLightSource {
+    FeDistantLight(FeDistantLight),
+    FePointLight(FePointLight),
+    FeSpotLight(FeSpotLight),
+}
+
+
+/// A distant light source.
+///
+/// `feDistantLight` element in the SVG.
+#[derive(Clone, Copy, Debug)]
+pub struct FeDistantLight {
+    /// Direction angle for the light source on the XY plane (clockwise),
+    /// in degrees from the x axis.
+    ///
+    /// `azimuth` in the SVG.
+    pub azimuth: f64,
+
+    /// Direction angle for the light source from the XY plane towards the z axis, in degrees.
+    ///
+    /// `elevation` in the SVG.
+    pub elevation: f64,
+}
+
+
+/// A point light source.
+///
+/// `fePointLight` element in the SVG.
+#[derive(Clone, Copy, Debug)]
+pub struct FePointLight {
+    /// X location for the light source.
+    ///
+    /// `x` in the SVG.
+    pub x: f64,
+
+    /// Y location for the light source.
+    ///
+    /// `y` in the SVG.
+    pub y: f64,
+
+    /// Z location for the light source.
+    ///
+    /// `z` in the SVG.
+    pub z: f64,
+}
+
+
+/// A spot light source.
+///
+/// `feSpotLight` element in the SVG.
+#[derive(Clone, Copy, Debug)]
+pub struct FeSpotLight {
+    /// X location for the light source.
+    ///
+    /// `x` in the SVG.
+    pub x: f64,
+
+    /// Y location for the light source.
+    ///
+    /// `y` in the SVG.
+    pub y: f64,
+
+    /// Z location for the light source.
+    ///
+    /// `z` in the SVG.
+    pub z: f64,
+
+    /// X point at which the light source is pointing.
+    ///
+    /// `pointsAtX` in the SVG.
+    pub points_at_x: f64,
+
+    /// Y point at which the light source is pointing.
+    ///
+    /// `pointsAtY` in the SVG.
+    pub points_at_y: f64,
+
+    /// Z point at which the light source is pointing.
+    ///
+    /// `pointsAtZ` in the SVG.
+    pub points_at_z: f64,
+
+    /// Exponent value controlling the focus for the light source.
+    ///
+    /// `specularExponent` in the SVG.
+    pub specular_exponent: PositiveNumber,
+
+    /// A limiting cone which restricts the region where the light is projected.
+    ///
+    /// `limitingConeAngle` in the SVG.
+    pub limiting_cone_angle: Option<f64>,
 }

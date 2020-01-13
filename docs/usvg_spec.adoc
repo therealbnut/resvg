@@ -65,6 +65,9 @@ Always present. Always the first `svg` child. Can be empty.
 * <<mask-element,mask>>
 * <<pattern-element,pattern>>
 * <<filter-element,filter>>
+* <<g-element,g>>
+* <<path-element,path>>
+* <<image-element,image>>
 
 *Attributes:*
 
@@ -266,6 +269,10 @@ A group will have at least one of the attributes present.
   Cannot be set to `none`.
 * `filter` = <<func-iri-type,<FuncIRI> >>? +
   Cannot be set to `none`.
+* `fill` = `none` | <<color-type,<color> >> | <<func-iri-type,<FuncIRI> >> +
+  Will be set only when any of the `filter` primitives has a `FillPaint` input.
+* `stroke` = `none` | <<color-type,<color> >> | <<func-iri-type,<FuncIRI> >> +
+  Will be set only when any of the `filter` primitives has a `StrokePaint` input.
 * `transform` = <<transform-type,<transform> >>?
 * `enable-background` = `new | new <number> <number> <positive-number> <positive-number>`?
 
@@ -282,15 +289,15 @@ A group will have at least one of the attributes present.
 * `id` = <<string-type,<string> >>? +
   An optional, but never empty, element ID.
 * `d` = <<path-data-type,<path-data> >> +
-* `fill` = `none` | <<color-type,<color> >> | <<func-iri-type,<FuncIRI> >>? +
-  If not set, than all fill-* attributes will not be set too. +
+* `fill` = `none` | <<color-type,<color> >> | <<func-iri-type,<FuncIRI> >> +
+  If set to `none` than all fill-* attributes will not be set too. +
   Default: black
 * `fill-opacity` = <<opacity-type,<opacity> >>? +
   Default: 1
 * `fill-rule` = `evenodd`? +
   Default: nonzero
-* `stroke` = <<color-type,<color> >> | <<func-iri-type,<FuncIRI> >>? +
-  If not set, than all stroke-* attributes will not be set too. +
+* `stroke` = `none` | <<color-type,<color> >> | <<func-iri-type,<FuncIRI> >> +
+  If set to `none` than all stroke-* attributes will not be set too. +
   Default: none
 * `stroke-width` = <<positive-number-type,<positive-number> >>? +
   Default: 1
@@ -423,14 +430,84 @@ The all four will always be present.
 * `in` = <<filter-input-type,<filter-input> >>
 * `in2` = <<filter-input-type,<filter-input> >>
 * `operator` = `over | in | out | atop | xor | arithmetic`
-* `k1` = <<positive-number-type,<positive-number> >>? +
+* `k1` = <<number-type,<number> >>? +
   Present only when `operator=arithmetic`.
-* `k2` = <<positive-number-type,<positive-number> >>? +
+* `k2` = <<number-type,<number> >>? +
   Present only when `operator=arithmetic`.
-* `k3` = <<positive-number-type,<positive-number> >>? +
+* `k3` = <<number-type,<number> >>? +
   Present only when `operator=arithmetic`.
-* `k4` = <<positive-number-type,<positive-number> >>? +
+* `k4` = <<number-type,<number> >>? +
   Present only when `operator=arithmetic`.
+* <<Filter primitive attributes>>
+
+=== Filter primitive `feConvolveMatrix`
+
+*Attributes:*
+
+* `in` = <<filter-input-type,<filter-input> >>
+* `order` = <<positive-integer-type,<positive-integer> >> " " <<positive-integer-type,<positive-integer> >> +
+  Both numbers are never 0.
+* `kernelMatrix` = `<list-of-numbers>`
+* `divisor` = <<number-type,<number> >> +
+  Never 0.
+* `bias` = <<number-type,<number> >>
+* `targetX` = <<positive-integer-type,<positive-integer> >> +
+  Always smaller than the number of columns in the matrix.
+* `targetY` = <<positive-integer-type,<positive-integer> >> +
+  Always smaller than the number of rows in the matrix.
+* `edgeMode` = `none | duplicate | wrap`
+* `preserveAlpha` = `true | false`
+* <<Filter primitive attributes>>
+
+=== Filter primitive `feDiffuseLighting`
+
+*Children:*
+
+Only one of:
+
+* `feDistantLight`
+* `fePointLight`
+* `feSpotLight`
+
+*Attributes:*
+
+* `in` = <<filter-input-type,<filter-input> >>
+* `surfaceScale` = <<number-type,<number> >>
+* `diffuseConstant` = <<number-type,<number> >>
+* `lighting-color` = <<color-type,<color> >>
+* <<Filter primitive attributes>>
+
+`feDistantLight` *attributes:*
+
+* `azimuth` = <<number-type,<number> >>
+* `elevation` = <<number-type,<number> >>
+
+`fePointLight` *attributes:*
+
+* `x` = <<number-type,<number> >>
+* `y` = <<number-type,<number> >>
+* `z` = <<number-type,<number> >>
+
+`feSpotLight` *attributes:*
+
+* `x` = <<number-type,<number> >>
+* `y` = <<number-type,<number> >>
+* `z` = <<number-type,<number> >>
+* `pointsAtX` = <<number-type,<number> >>
+* `pointsAtY` = <<number-type,<number> >>
+* `pointsAtZ` = <<number-type,<number> >>
+* `specularExponent` = <<positive-number-type,<positive-number> >>
+* `limitingConeAngle` = <<number-type,<number> >>?
+
+=== Filter primitive `feDisplacementMap`
+
+*Attributes:*
+
+* `in` = <<filter-input-type,<filter-input> >>
+* `in2` = <<filter-input-type,<filter-input> >>
+* `scale` = <<number-type,<number> >>
+* `xChannelSelector` = `R | G | B | A`
+* `yChannelSelector` = `R | G | B | A`
 * <<Filter primitive attributes>>
 
 === Filter primitive `feFlood`
@@ -456,11 +533,8 @@ The all four will always be present.
 * `preserveAspectRatio` = <<preserveAspectRatio-type,<preserveAspectRatio> >>
 * `image-rendering` = `optimizeSpeed`? +
   Default: optimizeQuality
-* `xlink:href` = <<iri-type,<IRI> >>? +
-  The IRI contains a file path or base64 encoded image.
-  Link to an element (like in `use`) is not supported. +
-  Unlike the `image` element, `feImage` can be without the `href` attribute.
-  In this case the filter primitive is an empty canvas.
+* `xlink:href` = <<iri-type,<IRI> >> +
+  The IRI contains a file path, base64 encoded image or a link to an element (like `use`).
 * <<Filter primitive attributes>>
 
 === Filter primitive `feMerge`
@@ -477,6 +551,15 @@ The all four will always be present.
 
 * `in` = <<filter-input-type,<filter-input> >>
 
+=== Filter primitive `feMorphology`
+
+*Attributes:*
+
+* `in` = <<filter-input-type,<filter-input> >>
+* `operator` = `erode | dilate`
+* `radius` = <<positive-number-type,<positive-number> >> " " <<positive-number-type,<positive-number> >>
+* <<Filter primitive attributes>>
+
 === Filter primitive `feOffset`
 
 *Attributes:*
@@ -486,11 +569,64 @@ The all four will always be present.
 * `dy` = <<number-type,<number> >>
 * <<Filter primitive attributes>>
 
+=== Filter primitive `feSpecularLighting`
+
+*Children:*
+
+Only one of:
+
+* `feDistantLight`
+* `fePointLight`
+* `feSpotLight`
+
+*Attributes:*
+
+* `in` = <<filter-input-type,<filter-input> >>
+* `surfaceScale` = <<number-type,<number> >>
+* `specularConstant` = <<number-type,<number> >>
+* `specularExponent` = <<number-type,<number> >> +
+  Number in a 1..128 range.
+* `lighting-color` = <<color-type,<color> >>
+* <<Filter primitive attributes>>
+
+`feDistantLight` *attributes:*
+
+* `azimuth` = <<number-type,<number> >>
+* `elevation` = <<number-type,<number> >>
+
+`fePointLight` *attributes:*
+
+* `x` = <<number-type,<number> >>
+* `y` = <<number-type,<number> >>
+* `z` = <<number-type,<number> >>
+
+`feSpotLight` *attributes:*
+
+* `x` = <<number-type,<number> >>
+* `y` = <<number-type,<number> >>
+* `z` = <<number-type,<number> >>
+* `pointsAtX` = <<number-type,<number> >>
+* `pointsAtY` = <<number-type,<number> >>
+* `pointsAtZ` = <<number-type,<number> >>
+* `specularExponent` = <<positive-number-type,<positive-number> >>
+* `limitingConeAngle` = <<number-type,<number> >>?
+
 === Filter primitive `feTile`
 
 *Attributes:*
 
 * `in` = <<filter-input-type,<filter-input> >>
+* <<Filter primitive attributes>>
+
+=== Filter primitive `feTurbulence`
+
+*Attributes:*
+
+* `baseFrequency` = <<positive-number-type,<positive-number> >> " " <<positive-number-type,<positive-number> >>
+* `numOctaves` = <<positive-integer-type,<positive-integer> >>
+* `seed` = <<integer-type,<integer> >>
+* `stitchTiles` = `stitch | noStitch`
+* `type` = `fractalNoise | turbulence`
 * <<Filter primitive attributes>>
 
 == Data types
@@ -511,8 +647,20 @@ that this attribute is optional.
 
 [[positive-number-type]]
 
-*<positive-number>* - A positive, non-zero real <<number-type,number>>. +
+*<positive-number>* - A positive real <<number-type,number>>. +
 `positive-number ::= [0-9]+ "." [0-9]+`
+
+
+[[integer-type]]
+
+*<integer>* - An integer. +
+`integer ::= [-]? [0-9]+`
+
+
+[[positive-integer-type]]
+
+*<positive-integer>* - A positive integer. +
+`positive-integer ::= [0-9]+`
 
 
 [[opacity-type]]

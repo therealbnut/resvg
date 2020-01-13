@@ -38,6 +38,7 @@ use self::prelude::*;
 pub struct State<'a> {
     parent_clip_path: Option<svgtree::Node<'a>>,
     parent_marker: Option<svgtree::Node<'a>>,
+    fe_image_link: bool,
     size: Size,
     view_box: Rect,
     #[cfg(feature = "text")]
@@ -73,6 +74,7 @@ pub fn convert_doc(
     let state = State {
         parent_clip_path: None,
         parent_marker: None,
+        fe_image_link: false,
         size,
         view_box: view_box.rect,
         #[cfg(feature = "text")]
@@ -82,8 +84,9 @@ pub fn convert_doc(
 
     convert_children(svg_doc.root(), &state, &mut tree.root(), &mut tree);
 
+    link_fe_image(svg_doc, &state, &mut tree);
     remove_empty_groups(&mut tree);
-    ungroup_groups(&mut tree, opt);
+    ungroup_groups(opt, &mut tree);
     remove_unused_defs(&mut tree);
 
     Ok(tree)
@@ -96,6 +99,7 @@ fn resolve_svg_size(
     let mut state = State {
         parent_clip_path: None,
         parent_marker: None,
+        fe_image_link: false,
         size: Size::new(100.0, 100.0).unwrap(),
         view_box: Rect::new(0.0, 0.0, 100.0, 100.0).unwrap(),
         #[cfg(feature = "text")]
@@ -345,23 +349,29 @@ fn convert_group(
         }
     }
 
+    // TODO: move to `::deref` later.
+    let filter_fill = resolve_filter_fill(node, state, filter.as_ref().map(|t| t.as_str()), tree);
+    let filter_stroke = resolve_filter_stroke(node, state, filter.as_ref().map(|t| t.as_str()), tree);
+
     let transform: tree::Transform = node.attribute(AId::Transform).unwrap_or_default();
 
     let enable_background = node.attribute(AId::EnableBackground);
 
+    let is_g_or_use = node.has_tag_name(EId::G) || node.has_tag_name(EId::Use);
     let required =
            opacity.value().fuzzy_ne(&1.0)
         || clip_path.is_some()
         || mask.is_some()
         || filter.is_some()
         || !transform.is_default()
-        || (node.has_tag_name(EId::G) && state.opt.keep_named_groups)
-        || (node.has_tag_name(EId::Use) && state.opt.keep_named_groups)
         || enable_background.is_some()
+        || (is_g_or_use
+            && node.has_element_id()
+            && (state.opt.keep_named_groups || state.fe_image_link))
         || force;
 
     if required {
-        let id = if node.has_tag_name(EId::G) || node.has_tag_name(EId::Use) {
+        let id = if is_g_or_use {
             node.element_id().to_string()
         } else {
             String::new()
@@ -374,6 +384,8 @@ fn convert_group(
             clip_path,
             mask,
             filter,
+            filter_fill,
+            filter_stroke,
             enable_background,
         }));
 
@@ -381,6 +393,40 @@ fn convert_group(
     } else {
         GroupKind::Skip
     }
+}
+
+fn resolve_filter_fill(
+    node: svgtree::Node,
+    state: &State,
+    filter_id: Option<&str>,
+    tree: &mut tree::Tree,
+) -> Option<tree::Paint> {
+    let filter_node = tree.defs_by_id(filter_id?)?;
+    if let tree::NodeKind::Filter(ref filter) = *filter_node.borrow() {
+        if !filter.children.iter().any(|c| c.kind.has_input(&tree::FilterInput::FillPaint)) {
+            return None;
+        }
+    }
+
+    let stroke = style::resolve_fill(node, true, state, tree)?;
+    Some(stroke.paint)
+}
+
+fn resolve_filter_stroke(
+    node: svgtree::Node,
+    state: &State,
+    filter_id: Option<&str>,
+    tree: &mut tree::Tree,
+) -> Option<tree::Paint> {
+    let filter_node = tree.defs_by_id(filter_id?)?;
+    if let tree::NodeKind::Filter(ref filter) = *filter_node.borrow() {
+        if !filter.children.iter().any(|c| c.kind.has_input(&tree::FilterInput::StrokePaint)) {
+            return None;
+        }
+    }
+
+    let stroke = style::resolve_stroke(node, true, state, tree)?;
+    Some(stroke.paint)
 }
 
 fn remove_empty_groups(tree: &mut tree::Tree) {
@@ -422,8 +468,8 @@ fn remove_empty_groups(tree: &mut tree::Tree) {
 }
 
 fn ungroup_groups(
-    tree: &mut tree::Tree,
     opt: &Options,
+    tree: &mut tree::Tree,
 ) {
     fn ungroup(parent: tree::Node, opt: &Options) -> bool {
         let mut changed = false;
@@ -442,6 +488,7 @@ fn ungroup_groups(
                 && g.filter.is_none()
                 && g.enable_background.is_none()
                 && !(opt.keep_named_groups && !g.id.is_empty())
+                && !is_id_used(&parent.tree(), &g.id)
             } else {
                 false
             };
@@ -487,6 +534,73 @@ fn ungroup_groups(
 fn remove_unused_defs(
     tree: &mut tree::Tree,
 ) {
+    let mut is_changed = true;
+    while is_changed {
+        is_changed = false;
+
+        let mut curr_node = tree.defs().first_child();
+        while let Some(mut node) = curr_node {
+            curr_node = node.next_sibling();
+
+            if !is_id_used(tree, node.id().as_ref()) {
+                node.detach();
+                is_changed = true;
+            }
+        }
+    }
+}
+
+fn link_fe_image(
+    svg_doc: &svgtree::Document,
+    state: &State,
+    tree: &mut tree::Tree,
+) {
+    let mut ids = Vec::new();
+    // TODO: simplify
+    for filter_node in tree.defs().children() {
+        if let tree::NodeKind::Filter(ref filter) = *filter_node.borrow() {
+            for fe in &filter.children {
+                if let tree::FilterKind::FeImage(ref fe_img) = fe.kind {
+                    if let tree::FeImageKind::Use(ref id) = fe_img.data {
+                        if tree.defs_by_id(id).or(tree.node_by_id(id)).is_none() {
+                            // If `feImage` references a non-existing element,
+                            // create it in `defs`.
+                            if svg_doc.element_by_id(id).is_some() {
+                                ids.push(id.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ids.sort();
+    ids.dedup();
+
+    // TODO: simplify
+    for id in ids {
+        if let Some(node) = svg_doc.element_by_id(&id) {
+            let mut state = state.clone();
+            state.fe_image_link = true;
+            convert_element(node, &state, &mut tree.defs(), tree);
+
+            // Check that node was actually created.
+            // If not, reset to a dummy primitive.
+            if !tree.defs().descendants().any(|n| *n.id() == id) {
+                for mut filter_node in tree.defs().children() {
+                    if let tree::NodeKind::Filter(ref mut filter) = *filter_node.borrow_mut() {
+                        for fe in &mut filter.children {
+                            fe.kind = filter::create_dummy_primitive();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn is_id_used(tree: &tree::Tree, id: &str) -> bool {
     macro_rules! check_id {
         ($from:expr, $id:expr) => {
             if let Some(ref id) = $from {
@@ -509,45 +623,53 @@ fn remove_unused_defs(
         };
     }
 
-    fn is_used(tree: &tree::Tree, id: &str) -> bool {
-        for node in tree.root().descendants() {
-            match *node.borrow() {
-                tree::NodeKind::ClipPath(ref clip) => {
-                    check_id!(clip.clip_path, id);
+    macro_rules! check_paint_id2 {
+        ($from:expr, $id:expr) => {
+            if let Some(ref v) = $from {
+                if let tree::Paint::Link(ref paint_id) = v {
+                    if $id == paint_id {
+                        return true;
+                    }
                 }
-                tree::NodeKind::Mask(ref mask) => {
-                    check_id!(mask.mask, id);
-                }
-                tree::NodeKind::Path(ref path) => {
-                    check_paint_id!(path.fill, id);
-                    check_paint_id!(path.stroke, id);
-                }
-                tree::NodeKind::Group(ref g) => {
-                    check_id!(g.clip_path, id);
-                    check_id!(g.mask, id);
-                    check_id!(g.filter, id);
-                }
-                _ => {}
             }
-        }
-
-        false
+        };
     }
 
-    let mut is_changed = true;
-    while is_changed {
-        is_changed = false;
-
-        let mut curr_node = tree.defs().first_child();
-        while let Some(mut node) = curr_node {
-            curr_node = node.next_sibling();
-
-            if !is_used(tree, node.id().as_ref()) {
-                node.detach();
-                is_changed = true;
+    for node in tree.root().descendants() {
+        match *node.borrow() {
+            tree::NodeKind::ClipPath(ref clip) => {
+                check_id!(clip.clip_path, id);
             }
+            tree::NodeKind::Mask(ref mask) => {
+                check_id!(mask.mask, id);
+            }
+            tree::NodeKind::Path(ref path) => {
+                check_paint_id!(path.fill, id);
+                check_paint_id!(path.stroke, id);
+            }
+            tree::NodeKind::Group(ref g) => {
+                check_id!(g.clip_path, id);
+                check_id!(g.mask, id);
+                check_id!(g.filter, id);
+                check_paint_id2!(g.filter_fill, id);
+                check_paint_id2!(g.filter_stroke, id);
+            }
+            tree::NodeKind::Filter(ref filter) => {
+                for fe in &filter.children {
+                    if let tree::FilterKind::FeImage(ref fe_img) = fe.kind {
+                        if let tree::FeImageKind::Use(ref fe_id) = fe_img.data {
+                            if fe_id == id {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
+
+    false
 }
 
 fn convert_path(

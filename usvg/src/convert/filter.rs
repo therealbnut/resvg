@@ -102,8 +102,14 @@ fn collect_children(
             EId::FeImage => convert_fe_image(child, state),
             EId::FeComponentTransfer => convert_fe_component_transfer(child, &primitives),
             EId::FeColorMatrix => convert_fe_color_matrix(child, &primitives),
+            EId::FeConvolveMatrix => convert_fe_convolve_matrix(child, &primitives),
+            EId::FeMorphology => convert_fe_morphology(child, &primitives),
+            EId::FeDisplacementMap => convert_fe_displacement_map(child, &primitives),
+            EId::FeTurbulence => convert_fe_turbulence(child),
+            EId::FeDiffuseLighting => convert_fe_diffuse_lighting(child, &primitives),
+            EId::FeSpecularLighting => convert_fe_specular_lighting(child, &primitives),
             tag_name => {
-                warn!("Filter with '{}' child is not supported.", tag_name);
+                warn!("'{}' is not a valid filter primitive. Skipped.", tag_name);
                 continue;
             }
         };
@@ -111,6 +117,8 @@ fn collect_children(
         let fe = convert_primitive(child, kind, units, state, &mut results);
         primitives.push(fe);
     }
+
+    // TODO: remove primitives which results are not used
 
     primitives
 }
@@ -208,14 +216,6 @@ fn convert_fe_flood(
     })
 }
 
-fn get_coeff(
-    node: svgtree::Node,
-    aid: AId,
-) -> tree::PositiveNumber {
-    let k: f64 = node.attribute(aid).unwrap_or(0.0);
-    if k.is_sign_negative() { 0.0 } else { k }.into()
-}
-
 fn convert_fe_composite(
     fe: svgtree::Node,
     primitives: &[tree::FilterPrimitive],
@@ -227,10 +227,10 @@ fn convert_fe_composite(
         "xor"           => tree::FeCompositeOperator::Xor,
         "arithmetic"    => {
             tree::FeCompositeOperator::Arithmetic {
-                k1: get_coeff(fe, AId::K1),
-                k2: get_coeff(fe, AId::K2),
-                k3: get_coeff(fe, AId::K3),
-                k4: get_coeff(fe, AId::K4),
+                k1: fe.attribute(AId::K1).unwrap_or(0.0),
+                k2: fe.attribute(AId::K2).unwrap_or(0.0),
+                k3: fe.attribute(AId::K3).unwrap_or(0.0),
+                k4: fe.attribute(AId::K4).unwrap_or(0.0),
             }
         }
         _ => tree::FeCompositeOperator::Over,
@@ -269,30 +269,33 @@ fn convert_fe_image(
         .find_attribute(AId::ImageRendering)
         .unwrap_or(state.opt.image_rendering);
 
+    if let Some(node) = fe.attribute::<svgtree::Node>(AId::Href) {
+        // If `feImage` references an existing SVG element,
+        // simply store its ID and do not attempt to convert the element itself.
+        // The problem is that `feImage` can reference an element outside `defs`,
+        // and we should not create it manually.
+        // Instead, after document conversion is finished, we should search for this ID
+        // and if it does not exist - create it inside `defs`.
+        return tree::FilterKind::FeImage(tree::FeImage {
+            aspect,
+            rendering_mode,
+            data: tree::FeImageKind::Use(node.element_id().to_string()),
+        });
+    }
+
     let href = match fe.attribute(AId::Href) {
         Some(s) => s,
         _ => {
             warn!("The 'feImage' element lacks the 'xlink:href' attribute. Skipped.");
-            return tree::FilterKind::FeImage(tree::FeImage {
-                aspect,
-                rendering_mode,
-                data: tree::FeImageKind::None,
-            });
+            return create_dummy_primitive();
         }
     };
 
     let href = super::image::get_href_data(fe.element_id(), href, state.opt.path.as_ref());
     let (img_data, format) = match href {
         Some((data, format)) => (data, format),
-        None => {
-            return tree::FilterKind::FeImage(tree::FeImage {
-                aspect,
-                rendering_mode,
-                data: tree::FeImageKind::None,
-            });
-        }
+        None => return create_dummy_primitive(),
     };
-
 
     tree::FilterKind::FeImage(tree::FeImage {
         aspect,
@@ -421,6 +424,298 @@ fn convert_color_matrix_kind(
     }
 
     None
+}
+
+fn convert_fe_convolve_matrix(
+    fe: svgtree::Node,
+    primitives: &[tree::FilterPrimitive],
+) -> tree::FilterKind {
+    fn parse_target(target: Option<f64>, order: u32) -> Option<u32> {
+        let default_target = (order as f32 / 2.0).floor() as u32;
+        let target = target.unwrap_or(default_target as f64) as i32;
+        if target < 0 || target >= order as i32 {
+            None
+        } else {
+            Some(target as u32)
+        }
+    }
+
+    let mut order_x = 3;
+    let mut order_y = 3;
+    if let Some(value) = fe.attribute::<&str>(AId::Order) {
+        let mut s = svgtypes::Stream::from(value);
+        let x = s.parse_list_integer().unwrap_or(3);
+        let y = s.parse_list_integer().unwrap_or(x);
+        if x > 0 && y > 0 {
+            order_x = x as u32;
+            order_y = y as u32;
+        }
+    }
+
+    let mut matrix = Vec::new();
+    if let Some(list) = fe.attribute::<&svgtypes::NumberList>(AId::KernelMatrix) {
+        if list.len() == (order_x * order_y) as usize {
+            matrix = list.0.clone();
+        }
+    }
+
+    let mut kernel_sum: f64 = matrix.iter().sum();
+    // Round up to prevent float precision issues.
+    kernel_sum = (kernel_sum * 1_000_000.0).round() / 1_000_000.0;
+    if kernel_sum.is_fuzzy_zero() {
+        kernel_sum = 1.0;
+    }
+
+    let divisor = fe.attribute::<f64>(AId::Divisor).unwrap_or(kernel_sum);
+    if divisor.is_fuzzy_zero() {
+        return create_dummy_primitive();
+    }
+
+    let bias = fe.attribute(AId::Bias).unwrap_or(0.0);
+
+    let target_x = parse_target(fe.attribute(AId::TargetX), order_x);
+    let target_y = parse_target(fe.attribute(AId::TargetY), order_y);
+
+    let target_x = try_opt_or!(target_x, create_dummy_primitive());
+    let target_y = try_opt_or!(target_y, create_dummy_primitive());
+
+    let kernel_matrix = tree::ConvolveMatrix::new(
+        target_x, target_y, order_x, order_y, matrix,
+    );
+    let kernel_matrix = try_opt_or!(kernel_matrix, create_dummy_primitive());
+
+    let edge_mode = match fe.attribute(AId::EdgeMode).unwrap_or("duplicate") {
+        "none" => tree::FeEdgeMode::None,
+        "wrap" => tree::FeEdgeMode::Wrap,
+        _      => tree::FeEdgeMode::Duplicate,
+    };
+
+    let preserve_alpha = match fe.attribute(AId::PreserveAlpha).unwrap_or("false") {
+        "true" => true,
+        _      => false,
+    };
+
+    tree::FilterKind::FeConvolveMatrix(tree::FeConvolveMatrix {
+        input: resolve_input(fe, AId::In, primitives),
+        matrix: kernel_matrix,
+        divisor: tree::NonZeroF64::new(divisor).unwrap(),
+        bias,
+        edge_mode,
+        preserve_alpha,
+    })
+}
+
+fn convert_fe_morphology(
+    fe: svgtree::Node,
+    primitives: &[tree::FilterPrimitive],
+) -> tree::FilterKind {
+    let operator = match fe.attribute(AId::Operator).unwrap_or("erode") {
+        "dilate" => tree::FeMorphologyOperator::Dilate,
+        _        => tree::FeMorphologyOperator::Erode,
+    };
+
+    // Both radius are zero by default.
+    let mut radius_x = tree::PositiveNumber::new(0.0);
+    let mut radius_y = tree::PositiveNumber::new(0.0);
+    if let Some(list) = fe.attribute::<&svgtypes::NumberList>(AId::Radius) {
+        let mut rx = 0.0;
+        let mut ry = 0.0;
+        if list.len() == 2 {
+            rx = list[0];
+            ry = list[1];
+        } else if list.len() == 1 {
+            rx = list[0];
+            ry = list[0]; // The same as `rx`.
+        }
+
+        // If only one of the values is zero, reset it to 1.0
+        // This is not specified in the spec, but this is how Chrome and Firefox works.
+        if rx.is_fuzzy_zero() && !ry.is_fuzzy_zero() {
+            rx = 1.0;
+        }
+        if !rx.is_fuzzy_zero() && ry.is_fuzzy_zero() {
+            ry = 1.0;
+        }
+
+        // Both values must be positive.
+        if rx.is_sign_positive() && ry.is_sign_positive() {
+            radius_x = tree::PositiveNumber::new(rx);
+            radius_y = tree::PositiveNumber::new(ry);
+        }
+    }
+
+    tree::FilterKind::FeMorphology(tree::FeMorphology {
+        input: resolve_input(fe, AId::In, primitives),
+        operator,
+        radius_x,
+        radius_y,
+    })
+}
+
+fn convert_fe_displacement_map(
+    fe: svgtree::Node,
+    primitives: &[tree::FilterPrimitive],
+) -> tree::FilterKind {
+    let parse_channel = |aid| {
+        match fe.attribute(aid).unwrap_or("A") {
+            "R" => tree::ColorChannel::R,
+            "G" => tree::ColorChannel::G,
+            "B" => tree::ColorChannel::B,
+            _   => tree::ColorChannel::A,
+        }
+    };
+
+    tree::FilterKind::FeDisplacementMap(tree::FeDisplacementMap {
+        input1: resolve_input(fe, AId::In, primitives),
+        input2: resolve_input(fe, AId::In2, primitives),
+        scale: fe.attribute(AId::Scale).unwrap_or(0.0),
+        x_channel_selector: parse_channel(AId::XChannelSelector),
+        y_channel_selector: parse_channel(AId::YChannelSelector),
+    })
+}
+
+fn convert_fe_turbulence(
+    fe: svgtree::Node,
+) -> tree::FilterKind {
+    let mut base_frequency = Point::new(0.0.into(), 0.0.into());
+    if let Some(list) = fe.attribute::<&svgtypes::NumberList>(AId::BaseFrequency) {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        if list.len() == 2 {
+            x = list[0];
+            y = list[1];
+        } else if list.len() == 1 {
+            x = list[0];
+            y = list[0]; // The same as `x`.
+        }
+
+        if x.is_sign_positive() && y.is_sign_positive() {
+            base_frequency = Point::new(x.into(), y.into());
+        }
+    }
+
+    let mut num_octaves = fe.attribute(AId::NumOctaves).unwrap_or(1.0);
+    if num_octaves.is_sign_negative() {
+        num_octaves = 0.0;
+    }
+
+    let kind = match fe.attribute(AId::Type).unwrap_or("turbulence") {
+        "fractalNoise" => tree::FeTurbulenceKind::FractalNoise,
+        _              => tree::FeTurbulenceKind::Turbulence,
+    };
+
+    tree::FilterKind::FeTurbulence(tree::FeTurbulence {
+        base_frequency,
+        num_octaves: num_octaves.round() as u32,
+        seed: fe.attribute(AId::Seed).unwrap_or(0.0).trunc() as i32,
+        stitch_tiles: fe.attribute(AId::StitchTiles) == Some("stitch"),
+        kind,
+    })
+}
+
+fn convert_fe_diffuse_lighting(
+    fe: svgtree::Node,
+    primitives: &[tree::FilterPrimitive],
+) -> tree::FilterKind {
+    let light_source = try_opt_or!(convert_light_source(fe), create_dummy_primitive());
+    tree::FilterKind::FeDiffuseLighting(tree::FeDiffuseLighting {
+        input: resolve_input(fe, AId::In, primitives),
+        surface_scale: fe.attribute(AId::SurfaceScale).unwrap_or(1.0),
+        diffuse_constant: fe.attribute(AId::DiffuseConstant).unwrap_or(1.0),
+        lighting_color: convert_lighting_color(fe),
+        light_source,
+    })
+}
+
+fn convert_fe_specular_lighting(
+    fe: svgtree::Node,
+    primitives: &[tree::FilterPrimitive],
+) -> tree::FilterKind {
+    let light_source = try_opt_or!(convert_light_source(fe), create_dummy_primitive());
+
+    let specular_exponent = fe.attribute(AId::SpecularExponent).unwrap_or(1.0);
+    if specular_exponent < 1.0 || specular_exponent > 128.0 {
+        // When exponent is out of range, the whole filter primitive should be ignored.
+        return create_dummy_primitive();
+    }
+
+    let specular_exponent = f64_bound(1.0, specular_exponent, 128.0);
+
+    tree::FilterKind::FeSpecularLighting(tree::FeSpecularLighting {
+        input: resolve_input(fe, AId::In, primitives),
+        surface_scale: fe.attribute(AId::SurfaceScale).unwrap_or(1.0),
+        specular_constant: fe.attribute(AId::SpecularConstant).unwrap_or(1.0),
+        specular_exponent,
+        lighting_color: convert_lighting_color(fe),
+        light_source,
+    })
+}
+
+#[inline(never)]
+fn convert_lighting_color(
+    node: svgtree::Node,
+) -> tree::Color {
+    match node.attribute::<&svgtree::AttributeValue>(AId::LightingColor) {
+        Some(svgtree::AttributeValue::CurrentColor) => {
+            node.find_attribute(AId::Color).unwrap_or_else(tree::Color::black)
+        }
+        Some(svgtree::AttributeValue::Color(c)) => *c,
+        _ => tree::Color::white(),
+    }
+}
+
+#[inline(never)]
+fn convert_light_source(
+    parent: svgtree::Node,
+) -> Option<tree::FeLightSource> {
+    let child = parent.children().find(|n|
+        matches!(n.tag_name(), Some(EId::FeDistantLight) | Some(EId::FePointLight) | Some(EId::FeSpotLight))
+    )?;
+
+    match child.tag_name() {
+        Some(EId::FeDistantLight) => {
+            Some(tree::FeLightSource::FeDistantLight(tree::FeDistantLight {
+                azimuth: child.attribute(AId::Azimuth).unwrap_or(0.0),
+                elevation: child.attribute(AId::Elevation).unwrap_or(0.0),
+            }))
+        }
+        Some(EId::FePointLight) => {
+            Some(tree::FeLightSource::FePointLight(tree::FePointLight {
+                x: child.attribute(AId::X).unwrap_or(0.0),
+                y: child.attribute(AId::Y).unwrap_or(0.0),
+                z: child.attribute(AId::Z).unwrap_or(0.0),
+            }))
+        }
+        Some(EId::FeSpotLight) => {
+            let mut specular_exponent = child.attribute(AId::SpecularExponent).unwrap_or(1.0);
+            if specular_exponent.is_sign_negative() {
+                specular_exponent = 1.0;
+            }
+
+            Some(tree::FeLightSource::FeSpotLight(tree::FeSpotLight {
+                x: child.attribute(AId::X).unwrap_or(0.0),
+                y: child.attribute(AId::Y).unwrap_or(0.0),
+                z: child.attribute(AId::Z).unwrap_or(0.0),
+                points_at_x: child.attribute(AId::PointsAtX).unwrap_or(0.0),
+                points_at_y: child.attribute(AId::PointsAtY).unwrap_or(0.0),
+                points_at_z: child.attribute(AId::PointsAtZ).unwrap_or(0.0),
+                specular_exponent: tree::PositiveNumber::new(specular_exponent),
+                limiting_cone_angle: child.attribute(AId::LimitingConeAngle),
+            }))
+        }
+        _ => None,
+    }
+}
+
+// A malformed filter primitive usually should produce a transparent image.
+// But since `FilterKind` structs are designed to always be valid,
+// we are using `FeFlood` as fallback.
+#[inline(never)]
+pub fn create_dummy_primitive() -> tree::FilterKind {
+    tree::FilterKind::FeFlood(tree::FeFlood {
+        color: tree::Color::black(),
+        opacity: tree::Opacity::new(0.0),
+    })
 }
 
 #[inline(never)]

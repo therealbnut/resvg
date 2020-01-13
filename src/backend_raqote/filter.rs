@@ -11,23 +11,41 @@ use log::warn;
 use usvg::ColorInterpolation as ColorSpace;
 
 use crate::prelude::*;
-use crate::filter::{self, Error, Filter, ImageExt, TransferFunctionExt};
+use crate::filter::{self, Error, Filter, ImageExt, IntoSvgFilters};
 use crate::ConvTransform;
 use super::{ColorExt, RaqoteDrawTargetExt};
 
 type Image = filter::Image<raqote::DrawTarget>;
+type FilterInputs<'a> = filter::FilterInputs<'a, raqote::DrawTarget>;
 type FilterResult = filter::FilterResult<raqote::DrawTarget>;
 
+macro_rules! into_svgfilters_image {
+    ($img:expr) => { svgfilters::ImageRef::new($img.get_data_u8().as_bgra(), $img.width() as u32, $img.height() as u32) };
+}
+
+macro_rules! into_svgfilters_image_mut {
+    ($img:expr) => { into_svgfilters_image_mut($img.width() as u32, $img.height() as u32, &mut $img) };
+}
+
+// We need a macro and a function to resolve lifetimes.
+fn into_svgfilters_image_mut(width: u32, height: u32, data: &mut raqote::DrawTarget)
+    -> svgfilters::ImageRefMut
+{
+    svgfilters::ImageRefMut::new(data.get_data_u8_mut().as_bgra_mut(), width, height)
+}
 
 pub fn apply(
     filter: &usvg::Filter,
     bbox: Option<Rect>,
     ts: &usvg::Transform,
     opt: &Options,
+    tree: &usvg::Tree,
     background: Option<&raqote::DrawTarget>,
+    fill_paint: Option<&raqote::DrawTarget>,
+    stroke_paint: Option<&raqote::DrawTarget>,
     canvas: &mut raqote::DrawTarget,
 ) {
-    RaqoteFilter::apply(filter, bbox, ts, opt, background, canvas);
+    RaqoteFilter::apply(filter, bbox, ts, opt, tree, background, fill_paint, stroke_paint, canvas);
 }
 
 
@@ -74,28 +92,16 @@ impl ImageExt for raqote::DrawTarget {
 
     fn into_srgb(&mut self) {
         let data =  self.get_data_u8_mut();
-        filter::from_premultiplied(data.as_bgra_mut());
-
-        for p in data.as_bgra_mut() {
-            p.r = filter::LINEAR_RGB_TO_SRGB_TABLE[p.r as usize];
-            p.g = filter::LINEAR_RGB_TO_SRGB_TABLE[p.g as usize];
-            p.b = filter::LINEAR_RGB_TO_SRGB_TABLE[p.b as usize];
-        }
-
-        filter::into_premultiplied(data.as_bgra_mut());
+        svgfilters::demultiply_alpha(data.as_bgra_mut());
+        svgfilters::from_linear_rgb(data.as_bgra_mut());
+        svgfilters::multiply_alpha(data.as_bgra_mut());
     }
 
     fn into_linear_rgb(&mut self) {
         let data =  self.get_data_u8_mut();
-        filter::from_premultiplied(data.as_bgra_mut());
-
-        for p in data.as_bgra_mut() {
-            p.r = filter::SRGB_TO_LINEAR_RGB_TABLE[p.r as usize];
-            p.g = filter::SRGB_TO_LINEAR_RGB_TABLE[p.g as usize];
-            p.b = filter::SRGB_TO_LINEAR_RGB_TABLE[p.b as usize];
-        }
-
-        filter::into_premultiplied(data.as_bgra_mut());
+        svgfilters::demultiply_alpha(data.as_bgra_mut());
+        svgfilters::into_linear_rgb(data.as_bgra_mut());
+        svgfilters::multiply_alpha(data.as_bgra_mut());
     }
 }
 
@@ -126,13 +132,42 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
     fn get_input(
         input: &usvg::FilterInput,
         region: ScreenRect,
+        inputs: &FilterInputs,
         results: &[FilterResult],
-        background: Option<&raqote::DrawTarget>,
-        canvas: &raqote::DrawTarget,
     ) -> Result<Image, Error> {
+        let convert = |in_image, region| {
+            let image = if let Some(image) = in_image {
+                copy_image(image, region)?
+            } else {
+                create_image(region.width(), region.height())?
+            };
+
+            Ok(Image {
+                image: Rc::new(image),
+                region: region.translate_to(0, 0),
+                color_space: ColorSpace::SRGB,
+            })
+        };
+
+        let convert_alpha = |mut image: raqote::DrawTarget| {
+            // Set RGB to black. Keep alpha as is.
+            let data = image.get_data_u8_mut();
+            for p in data.chunks_mut(4) {
+                p[0] = 0;
+                p[1] = 0;
+                p[2] = 0;
+            }
+
+            Ok(Image {
+                image: Rc::new(image),
+                region: region.translate_to(0, 0),
+                color_space: ColorSpace::SRGB,
+            })
+        };
+
         match input {
             usvg::FilterInput::SourceGraphic => {
-                let image = copy_image(canvas, region)?;
+                let image = copy_image(inputs.source, region)?;
 
                 Ok(Image {
                     image: Rc::new(image),
@@ -141,54 +176,23 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
                 })
             }
             usvg::FilterInput::SourceAlpha => {
-                let mut image = copy_image(canvas, region)?;
-
-                // Set RGB to black. Keep alpha as is.
-                let data = image.get_data_u8_mut();
-                for p in data.chunks_mut(4) {
-                    p[0] = 0;
-                    p[1] = 0;
-                    p[2] = 0;
-                }
-
-                Ok(Image {
-                    image: Rc::new(image),
-                    region: region.translate_to(0, 0),
-                    color_space: ColorSpace::SRGB,
-                })
+                let image = copy_image(inputs.source, region)?;
+                convert_alpha(image)
             }
             usvg::FilterInput::BackgroundImage => {
-                let image = if let Some(image) = background {
-                    copy_image(image, region)?
-                } else {
-                    create_image(canvas.width() as u32, canvas.height() as u32)?
-                };
-
-                Ok(Image {
-                    image: Rc::new(image),
-                    region: region.translate_to(0, 0),
-                    color_space: ColorSpace::SRGB,
-                })
+                convert(inputs.background, region)
             }
             usvg::FilterInput::BackgroundAlpha => {
                 let image = Self::get_input(
-                    &usvg::FilterInput::BackgroundImage, region, results, background, canvas,
+                    &usvg::FilterInput::BackgroundImage, region, inputs, results,
                 )?;
-                let mut image = image.take()?;
-
-                // Set RGB to black. Keep alpha as is.
-                let data = image.get_data_u8_mut();
-                for p in data.chunks_mut(4) {
-                    p[0] = 0;
-                    p[1] = 0;
-                    p[2] = 0;
-                }
-
-                Ok(Image {
-                    image: Rc::new(image),
-                    region: region.translate_to(0, 0),
-                    color_space: ColorSpace::SRGB,
-                })
+                convert_alpha(image.take()?)
+            }
+            usvg::FilterInput::FillPaint => {
+                convert(inputs.fill_paint, region.translate_to(0, 0))
+            }
+            usvg::FilterInput::StrokePaint => {
+                convert(inputs.stroke_paint, region.translate_to(0, 0))
             }
             usvg::FilterInput::Reference(ref name) => {
                 if let Some(ref v) = results.iter().rev().find(|v| v.name == *name) {
@@ -197,15 +201,9 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
                     // Technically unreachable.
                     warn!("Unknown filter primitive reference '{}'.", name);
                     Self::get_input(
-                        &usvg::FilterInput::SourceGraphic, region, results, background, canvas,
+                        &usvg::FilterInput::SourceGraphic, region, inputs, results,
                     )
                 }
-            }
-            _ => {
-                warn!("Filter input '{:?}' is not supported.", input);
-                Self::get_input(
-                    &usvg::FilterInput::SourceGraphic, region, results, background, canvas,
-                )
             }
         }
     }
@@ -221,16 +219,11 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         let (std_dx, std_dy, box_blur)
             = try_opt_or!(Self::resolve_std_dev(fe, units, bbox, ts), Ok(input));
 
-        let input = input.into_color_space(cs)?;
-        let mut buffer = input.take()?;
-
-        let (w, h) = (buffer.width() as u32, buffer.height() as u32);
-
-        let data = buffer.get_data_u8_mut();
+        let mut buffer = input.into_color_space(cs)?.take()?;
         if box_blur {
-            filter::box_blur::apply(data, w, h, std_dx, std_dy);
+            svgfilters::box_blur(std_dx, std_dy, into_svgfilters_image_mut!(buffer));
         } else {
-            filter::iir_blur::apply(data, w, h, std_dx, std_dy);
+            svgfilters::iir_blur(std_dx, std_dy, into_svgfilters_image_mut!(buffer));
         }
 
         Ok(Image::from_image(buffer, cs))
@@ -243,7 +236,10 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         ts: &usvg::Transform,
         input: Image,
     ) -> Result<Image, Error> {
-        let (dx, dy) = try_opt_or!(Self::resolve_offset(fe, units, bbox, ts), Ok(input));
+        let (dx, dy) = try_opt_or!(Self::scale_coordinates(fe.dx, fe.dy, units, bbox, ts), Ok(input));
+        if dx.is_fuzzy_zero() && dy.is_fuzzy_zero() {
+            return Ok(input);
+        }
 
         // TODO: do not use an additional buffer
         let mut dt = create_image(input.width(), input.height())?;
@@ -292,45 +288,19 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         input1: Image,
         input2: Image,
     ) -> Result<Image, Error> {
-        use rgb::alt::BGRA8;
-
-        let mut input1 = input1.into_color_space(cs)?.take()?;
-        let mut input2 = input2.into_color_space(cs)?.take()?;
+        let buffer1 = input1.into_color_space(cs)?.take()?;
+        let buffer2 = input2.into_color_space(cs)?.take()?;
 
         let mut dt = create_image(region.width(), region.height())?;
 
         if let Operator::Arithmetic { k1, k2, k3, k4 } = fe.operator {
-            let data1 = input1.get_data_u8_mut();
-            let data2 = input2.get_data_u8_mut();
-
-            let calc = |i1, i2, max| {
-                let i1 = i1 as f64 / 255.0;
-                let i2 = i2 as f64 / 255.0;
-                let result = k1.value() * i1 * i2 + k2.value() * i1 + k3.value() * i2 + k4.value();
-                f64_bound(0.0, result, max)
-            };
-
-            {
-                let mut i = 0;
-                let data3 = dt.get_data_u8_mut();
-                let data3 = data3.as_bgra_mut();
-                for (c1, c2) in data1.as_bgra().iter().zip(data2.as_bgra()) {
-                    let a = calc(c1.a, c2.a, 1.0);
-                    if a.is_fuzzy_zero() {
-                        i += 1;
-                        continue;
-                    }
-
-                    let r = (calc(c1.r, c2.r, a) * 255.0) as u8;
-                    let g = (calc(c1.g, c2.g, a) * 255.0) as u8;
-                    let b = (calc(c1.b, c2.b, a) * 255.0) as u8;
-                    let a = (a * 255.0) as u8;
-
-                    data3[i] = BGRA8 { r, g, b, a };
-
-                    i += 1;
-                }
-            }
+            let (w, h) = (region.width(), region.height());
+            svgfilters::arithmetic_composite(
+                k1, k2, k3, k4,
+                svgfilters::ImageRef::new(buffer1.get_data_u8().as_bgra(), w, h),
+                svgfilters::ImageRef::new(buffer2.get_data_u8().as_bgra(), w, h),
+                svgfilters::ImageRefMut::new(dt.get_data_u8_mut().as_bgra_mut(), w, h),
+            );
 
             return Ok(Image::from_image(dt, cs));
         }
@@ -339,7 +309,7 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
             blend_mode: raqote::BlendMode::Src,
             ..raqote::DrawOptions::default()
         };
-        dt.draw_image_at(0.0, 0.0, &input2.as_image(), &draw_opt);
+        dt.draw_image_at(0.0, 0.0, &buffer2.as_image(), &draw_opt);
 
         use usvg::FeCompositeOperator as Operator;
         let blend_mode = match fe.operator {
@@ -352,7 +322,7 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         };
 
         let draw_opt = raqote::DrawOptions { blend_mode, ..raqote::DrawOptions::default() };
-        dt.draw_image_at(0.0, 0.0, &input1.as_image(), &draw_opt);
+        dt.draw_image_at(0.0, 0.0, &buffer1.as_image(), &draw_opt);
 
         Ok(Image::from_image(dt, cs))
     }
@@ -361,14 +331,13 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         fe: &usvg::FeMerge,
         cs: ColorSpace,
         region: ScreenRect,
+        inputs: &FilterInputs,
         results: &[FilterResult],
-        background: Option<&raqote::DrawTarget>,
-        canvas: &raqote::DrawTarget,
     ) -> Result<Image, Error> {
         let mut dt = create_image(region.width(), region.height())?;
 
         for input in &fe.inputs {
-            let input = Self::get_input(input, region, &results, background, canvas)?;
+            let input = Self::get_input(input, region, inputs, results)?;
             let input = input.into_color_space(cs)?;
             dt.draw_image_at(0.0, 0.0, &input.as_ref().as_image(), &raqote::DrawOptions::default());
         }
@@ -421,11 +390,12 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         region: ScreenRect,
         subregion: ScreenRect,
         opt: &Options,
+        tree: &usvg::Tree,
+        ts: &usvg::Transform,
     ) -> Result<Image, Error> {
         let mut dt = create_image(region.width(), region.height())?;
 
         match fe.data {
-            usvg::FeImageKind::None => {}
             usvg::FeImageKind::Image(ref data, format) => {
                 let dx = (subregion.x() - region.x()) as f64;
                 let dy = (subregion.y() - region.y()) as f64;
@@ -445,7 +415,17 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
                     );
                 }
             }
-            usvg::FeImageKind::Use(..) => {}
+            usvg::FeImageKind::Use(ref id) => {
+                if let Some(ref node) = tree.defs_by_id(id).or(tree.node_by_id(id)) {
+                    let mut layers = super::create_layers(region.size());
+
+                    let (sx, sy) = ts.get_scale();
+                    dt.transform(&usvg::Transform::new_scale(sx, sy).to_native());
+                    dt.transform(&node.transform().to_native());
+
+                    super::render_node(node, opt, &mut crate::RenderState::Ok, &mut layers, &mut dt);
+                }
+            }
         }
 
         dt.set_transform(&raqote::Transform::default());
@@ -457,20 +437,19 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         cs: ColorSpace,
         input: Image,
     ) -> Result<Image, Error> {
-        let input = input.into_color_space(cs)?;
-        let mut buffer = input.take()?;
+        let mut buffer = input.into_color_space(cs)?.take()?;
 
-        let data = buffer.get_data_u8_mut();
-        filter::from_premultiplied(data.as_bgra_mut());
+        svgfilters::demultiply_alpha(buffer.get_data_u8_mut().as_bgra_mut());
 
-        for pixel in data.as_bgra_mut() {
-            pixel.r = fe.func_r.apply(pixel.r);
-            pixel.g = fe.func_g.apply(pixel.g);
-            pixel.b = fe.func_b.apply(pixel.b);
-            pixel.a = fe.func_a.apply(pixel.a);
-        }
+        svgfilters::component_transfer(
+            fe.func_b.into_svgf(),
+            fe.func_g.into_svgf(),
+            fe.func_r.into_svgf(),
+            fe.func_a.into_svgf(),
+            into_svgfilters_image_mut!(buffer),
+        );
 
-        filter::into_premultiplied(data.as_bgra_mut());
+        svgfilters::multiply_alpha(buffer.get_data_u8_mut().as_bgra_mut());
 
         Ok(Image::from_image(buffer, cs))
     }
@@ -480,13 +459,162 @@ impl Filter<raqote::DrawTarget> for RaqoteFilter {
         cs: ColorSpace,
         input: Image,
     ) -> Result<Image, Error> {
-        let input = input.into_color_space(cs)?;
-        let mut buffer = input.take()?;
+        let mut buffer = input.into_color_space(cs)?.take()?;
 
-        let data = buffer.get_data_u8_mut();
-        filter::from_premultiplied(data.as_bgra_mut());
-        filter::color_matrix::apply(&fe.kind, data.as_bgra_mut());
-        filter::into_premultiplied(data.as_bgra_mut());
+        svgfilters::demultiply_alpha(buffer.get_data_u8_mut().as_bgra_mut());
+        svgfilters::color_matrix(fe.kind.into_svgf(), into_svgfilters_image_mut!(buffer));
+        svgfilters::multiply_alpha(buffer.get_data_u8_mut().as_bgra_mut());
+
+        Ok(Image::from_image(buffer, cs))
+    }
+
+    fn apply_convolve_matrix(
+        fe: &usvg::FeConvolveMatrix,
+        cs: ColorSpace,
+        input: Image,
+    ) -> Result<Image, Error> {
+        let mut buffer = input.into_color_space(cs)?.take()?;
+
+        if fe.preserve_alpha {
+            svgfilters::demultiply_alpha(buffer.get_data_u8_mut().as_bgra_mut());
+        }
+
+        svgfilters::convolve_matrix(
+            fe.matrix.into_svgf(), fe.divisor.value(), fe.bias,
+            fe.edge_mode.into_svgf(), fe.preserve_alpha,
+            into_svgfilters_image_mut!(buffer),
+        );
+
+        Ok(Image::from_image(buffer, cs))
+    }
+
+    fn apply_morphology(
+        fe: &usvg::FeMorphology,
+        units: usvg::Units,
+        cs: ColorSpace,
+        bbox: Option<Rect>,
+        ts: &usvg::Transform,
+        input: Image,
+    ) -> Result<Image, Error> {
+        let mut buffer = input.into_color_space(cs)?.take()?;
+        let (rx, ry) = try_opt_or!(
+            Self::scale_coordinates(fe.radius_x.value(), fe.radius_y.value(), units, bbox, ts),
+            Ok(Image::from_image(buffer, cs))
+        );
+
+        if !(rx > 0.0 && ry > 0.0) {
+            buffer.make_transparent();
+            return Ok(Image::from_image(buffer, cs));
+        }
+
+        svgfilters::morphology(fe.operator.into_svgf(), rx, ry, into_svgfilters_image_mut!(buffer));
+
+        Ok(Image::from_image(buffer, cs))
+    }
+
+    fn apply_displacement_map(
+        fe: &usvg::FeDisplacementMap,
+        region: ScreenRect,
+        units: usvg::Units,
+        cs: ColorSpace,
+        bbox: Option<Rect>,
+        ts: &usvg::Transform,
+        input1: Image,
+        input2: Image,
+    ) -> Result<Image, Error> {
+        let buffer1 = input1.into_color_space(cs)?.take()?;
+        let buffer2 = input2.into_color_space(cs)?.take()?;
+
+        let mut buffer = create_image(region.width(), region.height())?;
+        let (sx, sy) = try_opt_or!(
+            Self::scale_coordinates(fe.scale, fe.scale, units, bbox, ts),
+            Ok(Image::from_image(buffer, cs))
+        );
+
+        svgfilters::displacement_map(
+            fe.x_channel_selector.into_svgf(),
+            fe.y_channel_selector.into_svgf(),
+            sx, sy,
+            into_svgfilters_image!(buffer1),
+            into_svgfilters_image!(buffer2),
+            into_svgfilters_image_mut!(buffer),
+        );
+
+        Ok(Image::from_image(buffer, cs))
+    }
+
+    fn apply_turbulence(
+        fe: &usvg::FeTurbulence,
+        region: ScreenRect,
+        cs: ColorSpace,
+        ts: &usvg::Transform,
+    ) -> Result<Image, Error> {
+        let mut buffer = create_image(region.width(), region.height())?;
+
+        let (sx, sy) = ts.get_scale();
+        if sx.is_fuzzy_zero() || sy.is_fuzzy_zero() {
+            return Ok(Image::from_image(buffer, cs));
+        }
+
+        svgfilters::turbulence(
+            region.x() as f64, region.y() as f64,
+            sx, sy,
+            fe.base_frequency.x.value().into(), fe.base_frequency.y.value().into(),
+            fe.num_octaves,
+            fe.seed,
+            fe.stitch_tiles,
+            fe.kind == usvg::FeTurbulenceKind::FractalNoise,
+            into_svgfilters_image_mut!(buffer),
+        );
+
+        svgfilters::multiply_alpha(buffer.get_data_u8_mut().as_bgra_mut());
+
+        Ok(Image::from_image(buffer, cs))
+    }
+
+    fn apply_diffuse_lighting(
+        fe: &usvg::FeDiffuseLighting,
+        region: ScreenRect,
+        cs: ColorSpace,
+        ts: &usvg::Transform,
+        input: Image,
+    ) -> Result<Image, Error> {
+        let mut buffer = create_image(region.width(), region.height())?;
+
+        let light_source = crate::filter::transform_light_source(region, ts, fe.light_source);
+
+        svgfilters::diffuse_lighting(
+            fe.surface_scale,
+            fe.diffuse_constant,
+            fe.lighting_color.into_svgf(),
+            light_source.into_svgf(),
+            into_svgfilters_image!(input.as_ref()),
+            into_svgfilters_image_mut!(buffer),
+        );
+
+        Ok(Image::from_image(buffer, cs))
+    }
+
+    fn apply_specular_lighting(
+        fe: &usvg::FeSpecularLighting,
+        region: ScreenRect,
+        cs: ColorSpace,
+        ts: &usvg::Transform,
+        input: Image,
+    ) -> Result<Image, Error> {
+        let mut buffer = create_image(region.width(), region.height())?;
+
+        let light_source = crate::filter::transform_light_source(region, ts, fe.light_source);
+
+        svgfilters::specular_lighting(
+            fe.surface_scale,
+            fe.specular_constant,
+            fe.specular_exponent,
+            fe.lighting_color.into_svgf(),
+            light_source.into_svgf(),
+            into_svgfilters_image!(input.as_ref()),
+            into_svgfilters_image_mut!(buffer),
+        );
 
         Ok(Image::from_image(buffer, cs))
     }

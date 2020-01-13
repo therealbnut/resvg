@@ -26,7 +26,7 @@ pub fn convert(tree: &Tree, opt: XmlOptions) -> String {
     if has_xlink(tree) {
         xml.write_attribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
     }
-    xml.write_attribute("xmlns:usvg", "https://github.com/RazrFalcon/usvg");
+    xml.write_attribute("xmlns:usvg", "https://github.com/RazrFalcon/resvg");
     xml.write_attribute("usvg:version", env!("CARGO_PKG_VERSION"));
 
     xml.start_svg_element(EId::Defs);
@@ -178,10 +178,10 @@ fn conv_defs(
 
                             match composite.operator {
                                 FeCompositeOperator::Arithmetic { k1, k2, k3, k4 } => {
-                                    xml.write_svg_attribute(AId::K1, &k1.value());
-                                    xml.write_svg_attribute(AId::K2, &k2.value());
-                                    xml.write_svg_attribute(AId::K3, &k3.value());
-                                    xml.write_svg_attribute(AId::K4, &k4.value());
+                                    xml.write_svg_attribute(AId::K1, &k1);
+                                    xml.write_svg_attribute(AId::K2, &k2);
+                                    xml.write_svg_attribute(AId::K3, &k3);
+                                    xml.write_svg_attribute(AId::K4, &k4);
                                 }
                                 _ => {}
                             }
@@ -217,11 +217,12 @@ fn conv_defs(
                                 ImageRendering::OptimizeSpeed   => "optimizeSpeed",
                             });
                             match img.data {
-                                FeImageKind::None => {}
                                 FeImageKind::Image(ref data, format) => {
                                     xml.write_image_data(data, format);
                                 }
-                                FeImageKind::Use(..) => {}
+                                FeImageKind::Use(ref id) => {
+                                    xml.write_attribute_fmt("xlink:href", format_args!("#{}", id));
+                                }
                             }
 
                             xml.write_svg_attribute(AId::Result, &fe.result);
@@ -266,10 +267,124 @@ fn conv_defs(
 
                             xml.end_element();
                         }
+                        FilterKind::FeConvolveMatrix(ref matrix) => {
+                            xml.start_svg_element(EId::FeConvolveMatrix);
+                            xml.write_filter_primitive_attrs(fe);
+                            xml.write_filter_input(AId::In, &matrix.input);
+                            xml.write_svg_attribute(AId::Result, &fe.result);
+
+                            xml.write_attribute_fmt(
+                                AId::Order.to_str(),
+                                format_args!("{} {}", matrix.matrix.columns(), matrix.matrix.rows()),
+                            );
+                            xml.write_numbers(AId::KernelMatrix, matrix.matrix.data());
+                            xml.write_svg_attribute(AId::Divisor, &matrix.divisor.value());
+                            xml.write_svg_attribute(AId::Bias, &matrix.bias);
+                            xml.write_svg_attribute(AId::TargetX, &matrix.matrix.target_x());
+                            xml.write_svg_attribute(AId::TargetY, &matrix.matrix.target_y());
+                            xml.write_svg_attribute(AId::EdgeMode, match matrix.edge_mode {
+                                FeEdgeMode::None => "none",
+                                FeEdgeMode::Duplicate => "duplicate",
+                                FeEdgeMode::Wrap => "wrap",
+                            });
+                            xml.write_svg_attribute(AId::PreserveAlpha,
+                                if matrix.preserve_alpha { "true" } else { "false" });
+
+                            xml.end_element();
+                        }
+                        FilterKind::FeMorphology(ref morphology) => {
+                            xml.start_svg_element(EId::FeMorphology);
+                            xml.write_filter_primitive_attrs(fe);
+                            xml.write_filter_input(AId::In, &morphology.input);
+                            xml.write_svg_attribute(AId::Result, &fe.result);
+
+                            xml.write_svg_attribute(AId::Operator, match morphology.operator {
+                                FeMorphologyOperator::Erode => "erode",
+                                FeMorphologyOperator::Dilate => "dilate",
+                            });
+                            xml.write_attribute_fmt(
+                                AId::Radius.to_str(),
+                                format_args!("{} {}", morphology.radius_x.value(),
+                                                      morphology.radius_y.value()),
+                            );
+
+                            xml.end_element();
+                        }
+                        FilterKind::FeDisplacementMap(ref map) => {
+                            xml.start_svg_element(EId::FeDisplacementMap);
+                            xml.write_filter_primitive_attrs(fe);
+                            xml.write_filter_input(AId::In, &map.input1);
+                            xml.write_filter_input(AId::In2, &map.input2);
+                            xml.write_svg_attribute(AId::Result, &fe.result);
+
+                            xml.write_svg_attribute(AId::Scale, &map.scale);
+
+                            let mut write_channel = |c, aid| {
+                                xml.write_svg_attribute(aid, match c {
+                                    ColorChannel::R => "R",
+                                    ColorChannel::G => "G",
+                                    ColorChannel::B => "B",
+                                    ColorChannel::A => "A",
+                                });
+                            };
+                            write_channel(map.x_channel_selector, AId::XChannelSelector);
+                            write_channel(map.y_channel_selector, AId::YChannelSelector);
+
+                            xml.end_element();
+                        }
+                        FilterKind::FeTurbulence(ref turbulence) => {
+                            xml.start_svg_element(EId::FeTurbulence);
+                            xml.write_filter_primitive_attrs(fe);
+                            xml.write_svg_attribute(AId::Result, &fe.result);
+
+                            xml.write_point(AId::BaseFrequency, turbulence.base_frequency);
+                            xml.write_svg_attribute(AId::NumOctaves, &turbulence.num_octaves);
+                            xml.write_svg_attribute(AId::Seed, &turbulence.seed);
+                            xml.write_svg_attribute(AId::StitchTiles, match turbulence.stitch_tiles {
+                                true => "stitch",
+                                false => "noStitch",
+                            });
+                            xml.write_svg_attribute(AId::Type, match turbulence.kind {
+                                FeTurbulenceKind::FractalNoise => "fractalNoise",
+                                FeTurbulenceKind::Turbulence => "turbulence",
+                            });
+
+                            xml.end_element();
+                        }
+                        FilterKind::FeDiffuseLighting(ref light) => {
+                            xml.start_svg_element(EId::FeDiffuseLighting);
+                            xml.write_filter_primitive_attrs(fe);
+                            xml.write_svg_attribute(AId::Result, &fe.result);
+
+                            xml.write_svg_attribute(AId::SurfaceScale, &light.surface_scale);
+                            xml.write_svg_attribute(AId::DiffuseConstant, &light.diffuse_constant);
+                            xml.write_svg_attribute(AId::LightingColor, &light.lighting_color);
+                            write_light_source(&light.light_source, xml);
+
+                            xml.end_element();
+                        }
+                        FilterKind::FeSpecularLighting(ref light) => {
+                            xml.start_svg_element(EId::FeSpecularLighting);
+                            xml.write_filter_primitive_attrs(fe);
+                            xml.write_svg_attribute(AId::Result, &fe.result);
+
+                            xml.write_svg_attribute(AId::SurfaceScale, &light.surface_scale);
+                            xml.write_svg_attribute(AId::SpecularConstant, &light.specular_constant);
+                            xml.write_svg_attribute(AId::SpecularExponent, &light.specular_exponent);
+                            xml.write_svg_attribute(AId::LightingColor, &light.lighting_color);
+                            write_light_source(&light.light_source, xml);
+
+                            xml.end_element();
+                        }
                     };
                 }
 
                 xml.end_element();
+            }
+            NodeKind::Group(_) |
+            NodeKind::Image(_) |
+            NodeKind::Path(_) => {
+                conv_element(&n, false, xml);
             }
             _ => {}
         }
@@ -282,82 +397,98 @@ fn conv_elements(
     xml: &mut XmlWriter,
 ) {
     for n in parent.children() {
-        match *n.borrow() {
-            NodeKind::Path(ref p) => {
-                write_path(p, is_clip_path, None, xml);
-            }
-            NodeKind::Image(ref img) => {
-                xml.start_svg_element(EId::Image);
-                if !img.id.is_empty() {
-                    xml.write_svg_attribute(AId::Id, &img.id);
-                }
+        conv_element(&n, is_clip_path, xml);
+    }
+}
 
-                xml.write_rect_attrs(img.view_box.rect);
-                if !img.view_box.aspect.is_default() {
-                    xml.write_aspect(img.view_box.aspect);
-                }
-
-                xml.write_visibility(img.visibility);
-
-                match img.rendering_mode {
-                    ImageRendering::OptimizeQuality => {}
-                    ImageRendering::OptimizeSpeed => {
-                        xml.write_svg_attribute(AId::ImageRendering, "optimizeSpeed");
-                    }
-                }
-
-                xml.write_transform(AId::Transform, img.transform);
-                xml.write_image_data(&img.data, img.format);
-
-                xml.end_element();
-            }
-            NodeKind::Group(ref g) => {
-                if is_clip_path {
-                    // ClipPath with a Group element is an `usvg` special case.
-                    // Group will contains a single Path element and we should set
-                    // `clip-path` on it.
-
-                    if let NodeKind::Path(ref path) = *n.first_child().unwrap().borrow() {
-                        let clip_id = g.clip_path.as_ref().map(String::deref);
-                        write_path(path, is_clip_path, clip_id, xml);
-                    }
-
-                    continue;
-                }
-
-                xml.start_svg_element(EId::G);
-                if !g.id.is_empty() {
-                    xml.write_svg_attribute(AId::Id, &g.id);
-                };
-
-                if let Some(ref id) = g.clip_path {
-                    xml.write_func_iri(AId::ClipPath, id);
-                }
-
-                if let Some(ref id) = g.mask {
-                    xml.write_func_iri(AId::Mask, id);
-                }
-
-                if let Some(ref id) = g.filter {
-                    xml.write_func_iri(AId::Filter, id);
-                }
-
-                if !g.opacity.is_default() {
-                    xml.write_svg_attribute(AId::Opacity, &g.opacity.value());
-                }
-
-                xml.write_transform(AId::Transform, g.transform);
-
-                if let Some(eb) = g.enable_background {
-                    xml.write_enable_background(eb);
-                }
-
-                conv_elements(&n, false, xml);
-
-                xml.end_element();
-            }
-            _ => {}
+fn conv_element(
+    node: &Node,
+    is_clip_path: bool,
+    xml: &mut XmlWriter,
+) {
+    match *node.borrow() {
+        NodeKind::Path(ref p) => {
+            write_path(p, is_clip_path, None, xml);
         }
+        NodeKind::Image(ref img) => {
+            xml.start_svg_element(EId::Image);
+            if !img.id.is_empty() {
+                xml.write_svg_attribute(AId::Id, &img.id);
+            }
+
+            xml.write_rect_attrs(img.view_box.rect);
+            if !img.view_box.aspect.is_default() {
+                xml.write_aspect(img.view_box.aspect);
+            }
+
+            xml.write_visibility(img.visibility);
+
+            match img.rendering_mode {
+                ImageRendering::OptimizeQuality => {}
+                ImageRendering::OptimizeSpeed => {
+                    xml.write_svg_attribute(AId::ImageRendering, "optimizeSpeed");
+                }
+            }
+
+            xml.write_transform(AId::Transform, img.transform);
+            xml.write_image_data(&img.data, img.format);
+
+            xml.end_element();
+        }
+        NodeKind::Group(ref g) => {
+            if is_clip_path {
+                // ClipPath with a Group element is an `usvg` special case.
+                // Group will contains a single Path element and we should set
+                // `clip-path` on it.
+
+                if let NodeKind::Path(ref path) = *node.first_child().unwrap().borrow() {
+                    let clip_id = g.clip_path.as_ref().map(String::deref);
+                    write_path(path, is_clip_path, clip_id, xml);
+                }
+
+                return;
+            }
+
+            xml.start_svg_element(EId::G);
+            if !g.id.is_empty() {
+                xml.write_svg_attribute(AId::Id, &g.id);
+            };
+
+            if let Some(ref id) = g.clip_path {
+                xml.write_func_iri(AId::ClipPath, id);
+            }
+
+            if let Some(ref id) = g.mask {
+                xml.write_func_iri(AId::Mask, id);
+            }
+
+            if let Some(ref id) = g.filter {
+                xml.write_func_iri(AId::Filter, id);
+
+                if let Some(ref fill) = g.filter_fill {
+                    write_paint(AId::Fill, fill, xml);
+                }
+
+                if let Some(ref stroke) = g.filter_stroke {
+                    write_paint(AId::Stroke, stroke, xml);
+                }
+            }
+
+            if !g.opacity.is_default() {
+                xml.write_svg_attribute(AId::Opacity, &g.opacity.value());
+            }
+
+            xml.write_transform(AId::Transform, g.transform);
+
+            if let Some(eb) = g.enable_background {
+                xml.write_enable_background(eb);
+            }
+
+            conv_elements(&node, false, xml);
+
+            xml.end_element();
+        }
+        _ => {}
     }
 }
 
@@ -373,6 +504,7 @@ trait XmlWriterExt {
     fn write_func_iri(&mut self, aid: AId, id: &str);
     fn write_rect_attrs(&mut self, r: Rect);
     fn write_numbers(&mut self, aid: AId, list: &[f64]);
+    fn write_point<T: Display>(&mut self, id: AId, p: Point<T>);
     fn write_filter_input(&mut self, id: AId, input: &FilterInput);
     fn write_filter_primitive_attrs(&mut self, fe: &FilterPrimitive);
     fn write_filter_transfer_function(&mut self, eid: EId, fe: &TransferFunction);
@@ -470,6 +602,10 @@ impl XmlWriterExt for XmlWriter {
         });
     }
 
+    fn write_point<T: Display>(&mut self, id: AId, p: Point<T>) {
+        self.write_attribute_fmt(id.to_str(), format_args!("{} {}", p.x, p.y));
+    }
+
     fn write_filter_input(&mut self, id: AId, input: &FilterInput) {
         self.write_attribute(id.to_str(), match input {
             FilterInput::SourceGraphic      => "SourceGraphic",
@@ -554,10 +690,8 @@ fn has_xlink(tree: &Tree) -> bool {
         match *n.borrow() {
             NodeKind::Filter(ref filter) => {
                 for fe in &filter.children {
-                    if let FilterKind::FeImage(ref img) = fe.kind {
-                        if let FeImageKind::Image(..) = img.data {
-                            return true;
-                        }
+                    if let FilterKind::FeImage(..) = fe.kind {
+                        return true;
                     }
                 }
             }
@@ -679,36 +813,24 @@ fn write_fill(
     is_clip_path: bool,
     xml: &mut XmlWriter,
 ) {
-    match fill {
-        Some(ref fill) => {
-            match fill.paint {
-                Paint::Color(c) => {
-                    if c != Color::black() {
-                        xml.write_svg_attribute(AId::Fill, &c);
-                    }
-                }
-                Paint::Link(ref id) => {
-                    xml.write_func_iri(AId::Fill, id);
-                }
-            }
+    if let Some(ref fill) = fill {
+        write_paint(AId::Fill, &fill.paint, xml);
 
-            if !fill.opacity.is_default() {
-                xml.write_svg_attribute(AId::FillOpacity, &fill.opacity.value());
-            }
-
-            if !fill.rule.is_default() {
-                let name = if is_clip_path {
-                    AId::ClipRule
-                } else {
-                    AId::FillRule
-                };
-
-                xml.write_svg_attribute(name, "evenodd");
-            }
+        if !fill.opacity.is_default() {
+            xml.write_svg_attribute(AId::FillOpacity, &fill.opacity.value());
         }
-        None => {
-            xml.write_svg_attribute(AId::Fill, "none");
+
+        if !fill.rule.is_default() {
+            let name = if is_clip_path {
+                AId::ClipRule
+            } else {
+                AId::FillRule
+            };
+
+            xml.write_svg_attribute(name, "evenodd");
         }
+    } else {
+        xml.write_svg_attribute(AId::Fill, "none");
     }
 }
 
@@ -717,10 +839,7 @@ fn write_stroke(
     xml: &mut XmlWriter,
 ) {
     if let Some(ref stroke) = stroke {
-        match stroke.paint {
-            Paint::Color(ref c) => xml.write_svg_attribute(AId::Stroke, c),
-            Paint::Link(ref id) => xml.write_func_iri(AId::Stroke, id),
-        }
+        write_paint(AId::Stroke, &stroke.paint, xml);
 
         if !stroke.opacity.is_default() {
             xml.write_svg_attribute(AId::StrokeOpacity, &stroke.opacity.value());
@@ -753,5 +872,55 @@ fn write_stroke(
         if let Some(ref array) = stroke.dasharray {
             xml.write_numbers(AId::StrokeDasharray, array);
         }
+    } else {
+        // Always set `stroke` to `none` to override the parent value.
+        // In 99.9% of the cases it's redundant, but a group with `filter` with `StrokePaint`
+        // will set `stroke`, which will interfere with children nodes.
+        xml.write_svg_attribute(AId::Stroke, "none");
     }
+}
+
+fn write_paint(
+    aid: AId,
+    paint: &Paint,
+    xml: &mut XmlWriter,
+) {
+    match paint {
+        Paint::Color(ref c) => xml.write_svg_attribute(aid, c),
+        Paint::Link(ref id) => xml.write_func_iri(aid, id),
+    }
+}
+
+fn write_light_source(
+    light: &FeLightSource,
+    xml: &mut XmlWriter,
+) {
+    match light {
+        FeLightSource::FeDistantLight(ref light) => {
+            xml.start_svg_element(EId::FeDistantLight);
+            xml.write_svg_attribute(AId::Azimuth, &light.azimuth);
+            xml.write_svg_attribute(AId::Elevation, &light.elevation);
+        }
+        FeLightSource::FePointLight(ref light) => {
+            xml.start_svg_element(EId::FePointLight);
+            xml.write_svg_attribute(AId::X, &light.x);
+            xml.write_svg_attribute(AId::Y, &light.y);
+            xml.write_svg_attribute(AId::Z, &light.z);
+        }
+        FeLightSource::FeSpotLight(ref light) => {
+            xml.start_svg_element(EId::FeSpotLight);
+            xml.write_svg_attribute(AId::X, &light.x);
+            xml.write_svg_attribute(AId::Y, &light.y);
+            xml.write_svg_attribute(AId::Z, &light.z);
+            xml.write_svg_attribute(AId::PointsAtX, &light.points_at_x);
+            xml.write_svg_attribute(AId::PointsAtY, &light.points_at_y);
+            xml.write_svg_attribute(AId::PointsAtZ, &light.points_at_z);
+            xml.write_svg_attribute(AId::SpecularExponent, &light.specular_exponent);
+            if let Some(ref n) = light.limiting_cone_angle {
+                xml.write_svg_attribute(AId::LimitingConeAngle, n);
+            }
+        }
+    }
+
+    xml.end_element();
 }

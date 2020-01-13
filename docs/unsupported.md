@@ -1,15 +1,5 @@
 ### Elements
 
-- Filter based
-  - `feConvolveMatrix`
-  - `feDiffuseLighting`
-  - `feDisplacementMap`
-  - `feDistantLight`
-  - `feImage` with a reference to an element
-  - `feMorphology`
-  - `fePointLight`
-  - `feSpecularLighting`
-  - `feSpotLight`
 - Font based
   - `altGlyph`
   - `altGlyphDef`
@@ -43,8 +33,6 @@
 - `font-variant`
 - `glyph-orientation-horizontal` (removed in the SVG 2)
 - `glyph-orientation-vertical` (deprecated in the SVG 2)
-- [`in`](https://www.w3.org/TR/SVG11/filters.html#FilterPrimitiveInAttribute)
-  with `FillPaint`, `StrokePaint`
 - `kerning` (removed in the SVG 2)
 - `lengthAdjust`
 - `textLength`
