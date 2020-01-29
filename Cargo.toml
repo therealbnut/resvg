@@ -57,3 +57,7 @@ all-features = true
 
 [lib]
 doctest = false
+
+[patch.crates-io]
+skia-bindings = { git = "https://github.com/rust-skia/rust-skia", rev = "87917c23e127af37c610801b2df7b7eb5adb350b"}
+skia-safe = { git = "https://github.com/rust-skia/rust-skia", rev = "87917c23e127af37c610801b2df7b7eb5adb350b"}
