@@ -42,8 +42,8 @@ raqote = { version = "0.6.1", default-features = false, optional = true }
 
 # skia backend
 resvg-skia = { path = "bindings/resvg-skia", version = "0.7", optional = true }
-skia-bindings = { git = "https://github.com/rust-skia/rust-skia", rev = "88dee23c70685c706cbf6dbb24d5eba3429e54d7", optional = true }
-skia-safe = { git = "https://github.com/rust-skia/rust-skia", rev = "88dee23c70685c706cbf6dbb24d5eba3429e54d7", optional = true }
+skia-bindings = { version = "0.26", optional = true }
+skia-safe = { version = "0.26", optional = true }
 
 [features]
 cairo-backend = ["cairo-rs"]
@@ -57,3 +57,7 @@ all-features = true
 
 [lib]
 doctest = false
+
+[patch.crates-io]
+skia-bindings = { git = "https://github.com/rust-skia/rust-skia", rev = "babe8a61a6afff136dbda6f5facbbbb9d0f2f00c" }
+skia-safe = { git = "https://github.com/rust-skia/rust-skia", rev = "babe8a61a6afff136dbda6f5facbbbb9d0f2f00c"}
