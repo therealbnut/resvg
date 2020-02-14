@@ -14,7 +14,7 @@ It can be used as a simple SVG to PNG converted.
 And as an embeddable library to paint SVG on an application native canvas.
 */
 
-#![doc(html_root_url = "https://docs.rs/resvg/0.8.0")]
+#![doc(html_root_url = "https://docs.rs/resvg/0.9.0")]
 
 // #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -115,9 +115,6 @@ pub mod backend_qt;
 #[cfg(any(feature = "skia-backend", feature = "skia-safe-backend"))]
 pub mod backend_skia;
 
-#[cfg(feature = "skia-backend-bindings")]
-pub mod backend_skia_bindings;
-
 #[cfg(feature = "raqote-backend")]
 pub mod backend_raqote;
 
@@ -202,11 +199,6 @@ pub fn default_backend() -> Box<dyn Render> {
     #[cfg(feature = "skia-backend")]
     {
         return Box::new(backend_skia::Backend);
-    }
-
-    #[cfg(feature = "skia-backend-bindings")]
-    {
-        return Box::new(backend_skia_bindings::Backend);
     }
 
     #[cfg(feature = "raqote-backend")]

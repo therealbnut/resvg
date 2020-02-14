@@ -1,6 +1,6 @@
 [package]
 name = "resvg"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["Evgeniy Reizner <razrfalcon@gmail.com>"]
 keywords = ["svg", "render", "raster"]
 license = "MPL-2.0"
@@ -29,7 +29,7 @@ travis-ci = { repository = "RazrFalcon/resvg" }
 [dependencies]
 log = "0.4"
 rgb = "0.8"
-usvg = { path = "usvg", version = "0.8", default-features = false }
+usvg = { path = "usvg", version = "0.9", default-features = false }
 png = { version = "0.15", default-features = false }
 jpeg-decoder = { version = "0.1.15", default-features = false }
 svgfilters = { path = "svgfilters", version = "0.1" }
@@ -38,23 +38,26 @@ svgfilters = { path = "svgfilters", version = "0.1" }
 cairo-rs = { version = "0.8.0", default-features = false, features = ["png"], optional = true }
 
 # qt backend
-resvg-qt = { path = "bindings/resvg-qt", version = "0.8", optional = true }
+resvg-qt = { path = "bindings/resvg-qt", version = "0.9", optional = true }
 
 # raqote backend
-raqote = { git = "https://github.com/jrmuizel/raqote", rev = "146bd17", default-features = false, optional = true }
+raqote = { version = "0.7.8", default-features = false, optional = true }
 
 # skia backend
-resvg-skia = { path = "bindings/resvg-skia", version = "0.7", optional = true }
+resvg-skia = { path = "bindings/resvg-skia", version = "0.9", optional = true }
+resvg-skia-safe = { path = "bindings/resvg-skia-safe", version = "0.9", optional = true }
 skia-safe = { version = "0.26.1", optional = true }
 skia-bindings = { version = "0.26.1", optional = true }
 
 [features]
 default = ["text"]
+
+text = ["usvg/text"]
 cairo-backend = ["cairo-rs", "png/png-encoding"]
 qt-backend = ["resvg-qt"]
 raqote-backend = ["raqote"]
 skia-backend = ["resvg-skia"]
-skia-backend-bindings = ["skia-bindings", "skia-safe"]
+skia-safe-backend = ["resvg-skia-safe", "skia-safe", "skia-bindings"]
 
 [package.metadata.docs.rs]
 # Ignore skia-backend since it cannot be built on docs.rs instance.

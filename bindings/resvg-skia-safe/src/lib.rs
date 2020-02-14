@@ -401,7 +401,7 @@ impl Paint {
         });
     }
     pub fn set_shader(&mut self, shader: &Shader) {
-        self.0.set_shader(Some(&shader.0));
+        self.0.set_shader(Some(shader.0.clone()));
     }
     pub fn set_stroke_width(&mut self, width: f64) {
         self.0.set_stroke_width(width as f32);
@@ -424,7 +424,7 @@ impl Paint {
         self.0.set_stroke_miter(miter as f32);
     }
     pub fn set_path_effect(&mut self, path_effect: PathEffect) {
-        self.0.set_path_effect(Some(&path_effect.0));
+        self.0.set_path_effect(Some(path_effect.0));
     }
 }
 
