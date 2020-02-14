@@ -40,6 +40,11 @@ impl<T> Layers<T> {
         }
     }
 
+    #[cfg(any(feature = "qt-backend", feature = "skia-backend", feature = "skia-backend-bindings"))]
+    pub fn is_empty(&self) -> bool {
+        self.used_layers == 0
+    }
+
     /// Returns a layer size.
     pub fn image_size(&self) -> ScreenSize {
         self.img_size

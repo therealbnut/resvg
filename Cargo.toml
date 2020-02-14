@@ -44,8 +44,9 @@ resvg-qt = { path = "bindings/resvg-qt", version = "0.8", optional = true }
 raqote = { git = "https://github.com/jrmuizel/raqote", rev = "146bd17", default-features = false, optional = true }
 
 # skia backend
-resvg-skia = { path = "bindings/resvg-skia", version = "0.8", optional = true }
-resvg-skia-safe = { path = "bindings/resvg-skia-safe", version = "0.8", optional = true }
+resvg-skia = { path = "bindings/resvg-skia", version = "0.7", optional = true }
+skia-safe = { version = "0.26.1", optional = true }
+skia-bindings = { version = "0.26.1", optional = true }
 
 [features]
 default = ["text"]
@@ -53,8 +54,7 @@ cairo-backend = ["cairo-rs", "png/png-encoding"]
 qt-backend = ["resvg-qt"]
 raqote-backend = ["raqote"]
 skia-backend = ["resvg-skia"]
-skia-safe-backend = ["resvg-skia-safe"]
-text = ["usvg/text"]
+skia-backend-bindings = ["skia-bindings", "skia-safe"]
 
 [package.metadata.docs.rs]
 # Ignore skia-backend since it cannot be built on docs.rs instance.
