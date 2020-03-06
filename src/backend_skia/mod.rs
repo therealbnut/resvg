@@ -275,12 +275,7 @@ fn render_group_impl(
     let sub_surface = layers.get()?;
     let mut sub_surface = sub_surface.borrow_mut();
 
-    let curr_ts = canvas.get_matrix();
-
-    let bbox = {
-        sub_surface.set_matrix(&curr_ts);
-        render_group(node, opt, state, layers, &mut sub_surface)
-    };
+    let bbox = render_group(node, opt, state, layers, &mut sub_surface);
 
     // During the background rendering for filters,
     // an opacity, a filter, a clip and a mask should be ignored for the inner group.
@@ -290,12 +285,9 @@ fn render_group_impl(
     // 'Any filter effects, masking and group opacity that might be set on A[i] do not apply
     // when rendering the children of A[i] into BUF[i].'
     if *state == RenderState::BackgroundFinished {
-        let curr_ts = canvas.get_matrix();
-        canvas.reset_matrix();
         canvas.draw_surface(
             &sub_surface, 0.0, 0.0, 255, skia::BlendMode::SourceOver, skia::FilterQuality::Low,
         );
-        canvas.set_matrix(&curr_ts);
         return bbox;
     }
 
@@ -304,7 +296,7 @@ fn render_group_impl(
     if let Some(ref id) = g.filter {
         if let Some(filter_node) = node.tree().defs_by_id(id) {
             if let usvg::NodeKind::Filter(ref filter) = *filter_node.borrow() {
-                let ts = usvg::Transform::from_native(&curr_ts);
+                let ts = usvg::Transform::default();
                 let background = prepare_filter_background(node, filter, opt);
                 let fill_paint = prepare_filter_fill_paint(node, filter, bbox, ts, opt, &sub_surface);
                 let stroke_paint = prepare_filter_stroke_paint(node, filter, bbox, ts, opt, &sub_surface);
@@ -320,7 +312,6 @@ fn render_group_impl(
         if let Some(ref id) = g.clip_path {
             if let Some(clip_node) = node.tree().defs_by_id(id) {
                 if let usvg::NodeKind::ClipPath(ref cp) = *clip_node.borrow() {
-                    sub_surface.set_matrix(&curr_ts);
                     clip_and_mask::clip(&clip_node, cp, opt, bbox, layers, &mut sub_surface);
                 }
             }
@@ -329,7 +320,6 @@ fn render_group_impl(
         if let Some(ref id) = g.mask {
             if let Some(mask_node) = node.tree().defs_by_id(id) {
                 if let usvg::NodeKind::Mask(ref mask) = *mask_node.borrow() {
-                    sub_surface.set_matrix(&curr_ts);
                     clip_and_mask::mask(&mask_node, mask, opt, bbox, layers, &mut sub_surface);
                 }
             }
@@ -342,12 +332,9 @@ fn render_group_impl(
         255
     };
 
-    let curr_ts = canvas.get_matrix();
-    canvas.reset_matrix();
     canvas.draw_surface(
         &sub_surface, 0.0, 0.0, a, skia::BlendMode::SourceOver, skia::FilterQuality::Low,
     );
-    canvas.set_matrix(&curr_ts);
 
     bbox
 }
