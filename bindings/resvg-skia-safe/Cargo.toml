@@ -10,5 +10,5 @@ repository = "https://github.com/RazrFalcon/resvg"
 workspace = "../.."
 
 [dependencies]
-skia-bindings = { version = "0.26.1" }
-skia-safe = { version = "0.26.1" }
+skia-bindings = { version = "0.27.1" }
+skia-safe = { version = "0.27.1" }
