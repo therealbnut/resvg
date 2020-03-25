@@ -57,3 +57,8 @@ all-features = true
 
 [lib]
 doctest = false
+
+
+[patch.crates-io]
+skia-bindings = { git = "https://github.com/velyan/rust-skia", branch = "freetype-patch"}
+skia-safe = { git = "https://github.com/velyan/rust-skia", branch = "freetype-patch"}
