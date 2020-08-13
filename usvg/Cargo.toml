@@ -20,6 +20,7 @@ travis-ci = { repository = "RazrFalcon/resvg" }
 base64 = "0.10"
 data-url = "0.1"
 harfbuzz_rs = "1.0"
+harfbuzz-sys = "=0.4.1"
 kurbo = "0.2.3"
 libflate = "0.1.25"
 log = "0.4"
