@@ -131,3 +131,12 @@ pub fn render_node(
     render::render_node_to_canvas(node, vbox, img_size, &mut render::RenderState::Ok, &mut img);
     Some(Image::from_surface(img))
 }
+
+/// Renders an SVG to an existing Skia Canvas.
+pub fn render_to_canvas(
+    tree: &usvg::Tree,
+    img_size: ScreenSize,
+    canvas: &mut tiny_skia::Canvas,,
+) {
+    render::render_to_canvas(tree, img_size, &mut canvas);
+}
