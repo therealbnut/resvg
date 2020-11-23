@@ -136,7 +136,7 @@ pub fn render_node(
 pub fn render_to_canvas(
     tree: &usvg::Tree,
     img_size: ScreenSize,
-    canvas: &mut tiny_skia::Canvas,,
+    canvas: &mut tiny_skia::Canvas,
 ) {
-    render::render_to_canvas(tree, img_size, &mut canvas);
+    render::render_to_canvas(tree, img_size, canvas);
 }

@@ -131,7 +131,7 @@ fn draw_svg(
     }
 
     canvas.concat(ts.to_native());
-    render_to_canvas(&tree, img_size, canvas);
+    render::render_to_canvas(&tree, img_size, canvas);
 
     canvas.restore();
 }
