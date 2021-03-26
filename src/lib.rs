@@ -16,7 +16,7 @@ And as an embeddable library to paint SVG on an application native canvas.
 
 #![doc(html_root_url = "https://docs.rs/resvg/0.9.1")]
 
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 /// Unwraps `Option` and invokes `return` on `None`.
@@ -94,6 +94,9 @@ pub use resvg_qt as qt;
 #[cfg(feature = "skia-backend")]
 pub use resvg_skia as skia;
 
+#[cfg(feature = "skia-backend-bindings")]
+pub use skia_safe as skia;
+
 #[cfg(feature = "raqote-backend")]
 pub use raqote;
 
@@ -108,6 +111,9 @@ pub mod backend_qt;
 
 #[cfg(feature = "skia-backend")]
 pub mod backend_skia;
+
+#[cfg(feature = "skia-backend-bindings")]
+pub mod backend_skia_bindings;
 
 #[cfg(feature = "raqote-backend")]
 pub mod backend_raqote;
@@ -193,6 +199,11 @@ pub fn default_backend() -> Box<dyn Render> {
     #[cfg(feature = "skia-backend")]
     {
         return Box::new(backend_skia::Backend);
+    }
+
+    #[cfg(feature = "skia-backend-bindings")]
+    {
+        return Box::new(backend_skia_bindings::Backend);
     }
 
     #[cfg(feature = "raqote-backend")]
