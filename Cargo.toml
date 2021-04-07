@@ -45,17 +45,24 @@ raqote = { version = "0.8", default-features = false, optional = true }
 # skia backend
 resvg-skia = { path = "bindings/resvg-skia", version = "0.9", optional = true }
 
+# skia-safe backend
+resvg-skia-safe = { path = "bindings/resvg-skia-safe", version = "0.9", optional = true }
+
 [features]
 default = ["text"]
 cairo-backend = ["cairo-rs", "png/png-encoding"]
 qt-backend = ["resvg-qt"]
 raqote-backend = ["raqote"]
 skia-backend = ["resvg-skia"]
+skia-safe-backend = ["resvg-skia-safe"]
 text = ["usvg/text"]
 
 [package.metadata.docs.rs]
-# Ignore skia-backend since it cannot be built on docs.rs instance.
-features = ["cairo-backend", "qt-backend", "raqote-backend"]
+features = ["cairo-backend", "qt-backend", "raqote-backend", "skia-backend", "skia-safe-backend"]
 
 [lib]
 doctest = false
+
+[patch.crates-io]
+skia-bindings = { git = "https://github.com/StewartCanva/rust-skia", rev = "bef2150f05352a32bf072c52b1718d68974e19fc" }
+skia-safe = { git = "https://github.com/StewartCanva/rust-skia", rev = "bef2150f05352a32bf072c52b1718d68974e19fc" }
