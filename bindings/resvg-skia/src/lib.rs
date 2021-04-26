@@ -87,7 +87,7 @@ impl Surface {
         let mut copy = Surface::new_rgba(width, height)?;
         let mut paint = skia_safe::Paint::default();
         paint.set_filter_quality(skia_safe::FilterQuality::Low);
-        self.surface.clone().draw(copy.surface.canvas(), (-(x as f32), -(y as f32)), Some(&paint));
+        self.surface.clone().draw(copy.surface.canvas(), (-(x as f32), -(y as f32)), skia_safe::SamplingOptions::default(), Some(&paint));
         Some(copy)
     }
 
@@ -251,7 +251,7 @@ impl Canvas {
     }
 
     pub fn set_matrix(&mut self, matrix: &Matrix) {
-        self.0.canvas().set_matrix(&matrix.0);
+        self.0.canvas().set_matrix(&matrix.0.into());
     }
 
     pub fn concat(&mut self, matrix: &Matrix) {
@@ -455,8 +455,9 @@ impl Shader {
     pub fn new_from_surface_image(surface: &Surface, matrix: Matrix) -> Shader {
         Shader(surface.image_snapshot().to_shader(
             (skia_safe::TileMode::Repeat, skia_safe::TileMode::Repeat),
+            skia_safe::SamplingOptions::default(),
             Some(&matrix.0),
-        ))
+        ).unwrap())
     }
 }
 

@@ -11,6 +11,6 @@ cc = "1.0"
 pkg-config = "0.3"
 
 [dependencies]
-skia-safe = "0.38.0"
-skia-bindings = "0.38.0"
+skia-safe = { git = "https://github.com/StewartCanva/rust-skia.git", rev = "1751b31560968dffba530494123ad0f33c463887" }
+skia-bindings = { git = "https://github.com/StewartCanva/rust-skia.git", rev = "1751b31560968dffba530494123ad0f33c463887" }
 png = "0.16.8"
