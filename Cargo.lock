@@ -969,7 +969,7 @@ checksum = "0b8de496cf83d4ed58b6be86c3a275b8602f6ffe98d3024a869e124147a9a3ac"
 [[package]]
 name = "skia-bindings"
 version = "0.37.0"
-source = "git+https://github.com/StewartCanva/rust-skia?rev=07eca5e024039834cdf3d4cbb25859ff3a6b00c0#07eca5e024039834cdf3d4cbb25859ff3a6b00c0"
+source = "git+https://github.com/StewartCanva/rust-skia?rev=f36c46a0770c3b28020cc4ee3f81c7167ceea04b#f36c46a0770c3b28020cc4ee3f81c7167ceea04b"
 dependencies = [
  "bindgen",
  "cc",
@@ -987,7 +987,7 @@ dependencies = [
 [[package]]
 name = "skia-safe"
 version = "0.37.0"
-source = "git+https://github.com/StewartCanva/rust-skia?rev=07eca5e024039834cdf3d4cbb25859ff3a6b00c0#07eca5e024039834cdf3d4cbb25859ff3a6b00c0"
+source = "git+https://github.com/StewartCanva/rust-skia?rev=f36c46a0770c3b28020cc4ee3f81c7167ceea04b#f36c46a0770c3b28020cc4ee3f81c7167ceea04b"
 dependencies = [
  "bitflags",
  "lazy_static",
