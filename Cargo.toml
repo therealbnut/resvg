@@ -60,4 +60,4 @@ features = ["cairo-backend", "qt-backend", "raqote-backend", "skia-backend"]
 doctest = false
 
 [patch.crates-io]
-skia-safe = { git = "https://github.com/davidbr4gg/rust-skia", branch = "david-compile-typesetter-wasm" }
+skia-safe = { git = "https://github.com/StewartCanva/rust-skia", branch = "david-compile-typesetter-wasm" }
